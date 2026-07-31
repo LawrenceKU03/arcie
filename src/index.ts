@@ -18,6 +18,8 @@ export { startContractServer, contractRequestHandler } from "./server/contract";
 export type { ContractServerOptions, ContractHandlerOptions } from "./server/contract";
 export { buildAgentManifest } from "./server/manifest";
 export type { BuiltManifest } from "./server/manifest";
+export { findArcieJson, loadArcieJson, loadArcieConfig, pickAgentDir, missingEnvVars } from "./config/arcie-json";
+export type { ArcieJsonSchema, ArcieRuntimeConfig, ArcieContractConfig, LoadedArcieConfig } from "./config/arcie-json";
 export { bearer, basic } from "./auth/index";
 export type { OutboundAuthFn, TokenValue } from "./auth/index";
 export type * from "./types";

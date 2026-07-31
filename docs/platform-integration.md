@@ -53,12 +53,13 @@ Ships in every scaffolded arcie project. Full schema:
 
 Field semantics:
 
+- **`arcie.json` is read and validated by the framework.** `arcie build`, `arcie serve`, and `arcie dev` load the nearest `arcie.json` (walking up from the current directory), fail loudly on a malformed config, and resolve `agent.dir` from it unless `--agent-dir` is passed explicitly. Missing `runtime.env` keys produce a boot warning before the server starts.
 - **`agent.dir`** — the runtime lives here. Contains `agent.ts`, `instructions.md`, `tools/`, `subagents/`, `knowledge/`, `channels/` (Slack, WhatsApp, and other non-HTTP integrations), `schedules/`, `sessions/`, and `policies/`.
 - **`agent.entry`** — the agent definition module. Informational for your purposes; `arcie build` resolves it.
 - **`runtime.buildCommand`** — run this at the repo root to produce the artifact.
 - **`runtime.artifact`** — the file the build produces, relative to repo root. Its presence after a build is a good success check.
 - **`runtime.startCommand`** — run this at the repo root to start the container.
-- **`runtime.env`** — environment variables the runtime requires. Your dashboard should prompt for these on first deploy and store them as secrets.
+- **`runtime.env`** — environment variables the runtime requires. Your dashboard should prompt for these on first deploy and store them as secrets. A legacy project without `runtime.env` requires at minimum `CENCORI_API_KEY`.
 - **`runtime.contract`** — the HTTP surface the started process answers. See [Runtime Contract](#runtime-contract) below. Treat this block as descriptive: it tells you which route to health-check and which routes are safe to expose publicly.
 
 Older projects may still contain `apps` and `deploy` blocks instead of `runtime`. Those describe the retired Next.js layout. If you support them at all, treat `runtime` as taking precedence when both are present.
@@ -85,7 +86,7 @@ Notes for implementers:
 
 - **One install, one build, one process.** No base directory to set, no second `package.json`, no file-staging step. The staging hook the previous spec required (`./agent` → `./web/agent`) must be removed — it now copies a directory into a path that does not exist.
 - **The artifact is self-contained.** `arcie build` uses esbuild to bundle the agent's server entry together with the arcie runtime into a single ESM file targeting Node 18. It boots with zero external dependencies, so `node_modules` is not needed at runtime and the build output can be shipped alone if your pipeline prunes.
-- **`arcie build` also writes `.arcie/manifest.json`** — a JSON description of the agent's tools, skills, hooks, channels, connections, schedules, subagents, session config, and policies. You may surface this in your dashboard; it is the same shape `GET /_manifest` serves.
+- **`arcie build` also writes `.arcie/manifest.json`** — a JSON description of the agent's tools, skills, hooks, channels, connections, schedules, subagents, session config, policies, and a `deploy` block carrying the resolved build command, artifact, start command, required env vars, and contract routes (from `arcie.json`, with defaults filled in). You may surface this in your dashboard; it is the same shape `GET /_manifest` serves, so provisioning can read everything from the endpoint without parsing `arcie.json` itself.
 - **`ARCIE_AGENT_DIR`** overrides where the started process looks for the agent directory. It defaults to `<artifact dir>/../agent`, which is correct for the standard layout. Set it only if your pipeline relocates the bundle away from its sibling `agent/`.
 - **Bundling is best-effort.** If esbuild is unavailable or `arcie` cannot be resolved from the project, `arcie build` still succeeds and writes `manifest.json` without `server.mjs`. Check for the artifact rather than relying on the exit code alone.
 

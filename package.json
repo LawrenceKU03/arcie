@@ -35,7 +35,8 @@
     "./web": "./dist/web/agent-chat.js",
     "./ui": "./dist/ui/index.js",
     "./ui/styles.css": "./dist/ui/styles.css",
-    "./evals": "./dist/evals/index.js"
+    "./evals": "./dist/evals/index.js",
+    "./config": "./dist/config/index.js"
   },
   "typesVersions": {
     "*": {

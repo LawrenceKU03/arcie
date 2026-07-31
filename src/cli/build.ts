@@ -3,6 +3,7 @@ import { resolve, join, dirname } from "node:path";
 import { loadAgent } from "../loader";
 import { discoverAgent } from "../discover/index";
 import { buildAgentManifest } from "../server/manifest";
+import { loadArcieConfig, pickAgentDir, missingEnvVars } from "../config/arcie-json";
 import { grey, dimmed } from "./style";
 
 /**
@@ -94,18 +95,34 @@ async function bundleServer(projectRoot: string, outDir: string): Promise<string
 }
 
 export async function buildCommand(options: {
-  agentDir: string;
+  agentDir?: string;
   outDir: string;
 }): Promise<void> {
-  const agentDirPath = resolve(process.cwd(), options.agentDir);
+  // arcie.json is the source of truth: `--agent-dir` wins, then the config's
+  // agent.dir, then the conventional ./agent. A malformed config fails the
+  // build loudly instead of silently shipping with wrong deploy metadata.
+  const config = loadArcieConfig(process.cwd());
+  const agentDirPath = pickAgentDir(process.cwd(), options.agentDir, config);
   const outDir = resolve(process.cwd(), options.outDir);
   const projectRoot = dirname(agentDirPath);
 
   console.log(`\n  Building agent...\n`);
 
+  if (config) {
+    console.log(`  ${dimmed(`config   ${config.path}`)}`);
+    for (const warning of config.warnings) console.warn(`  ${grey("⚠")} ${warning}`);
+  }
+
   if (!existsSync(agentDirPath)) {
     console.error(`  Agent directory not found: ${agentDirPath}`);
     process.exit(1);
+  }
+
+  const missing = missingEnvVars(config);
+  if (missing.length > 0) {
+    console.warn(
+      `  ${grey("⚠")} runtime env vars not set: ${missing.join(", ")} — /invoke will fail until they are`,
+    );
   }
 
   const { agent: discovered, diagnostics } = discoverAgent(agentDirPath);
@@ -122,7 +139,7 @@ export async function buildCommand(options: {
 
     mkdirSync(outDir, { recursive: true });
 
-    const manifest = buildAgentManifest(agent, discovered);
+    const manifest = buildAgentManifest(agent, discovered, config);
     writeFileSync(join(outDir, "manifest.json"), JSON.stringify(manifest, null, 2));
 
     console.log(`  Written to ${dimmed(`${outDir}/manifest.json`)}`);

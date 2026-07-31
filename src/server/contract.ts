@@ -6,6 +6,7 @@ import { discoverAgent } from "../discover/index";
 import { streamAgent, type RunOptions } from "../runner/index";
 import { FileStore } from "../memory/file-store";
 import { buildAgentManifest } from "./manifest";
+import { loadArcieConfig } from "../config/arcie-json";
 import type { StreamEvent } from "../protocol/events";
 import type { ChannelRequest, ChannelResponse } from "../types";
 
@@ -296,7 +297,11 @@ export function contractRequestHandler(
         ? await loadAgentById(agentDir, agentId, { hotReload })
         : await loadAgent(agentDir, { hotReload });
       const { agent: discovered } = discoverAgent(agentDir);
-      sendJson(res, 200, buildAgentManifest(agent, discovered));
+      // The deployed project carries arcie.json (if it has one) — merge its
+      // deploy metadata into the manifest so the platform can provision
+      // env / start command straight from this endpoint.
+      const config = loadArcieConfig(agentDir);
+      sendJson(res, 200, buildAgentManifest(agent, discovered, config));
     } catch (err) {
       sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }

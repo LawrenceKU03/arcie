@@ -175,9 +175,9 @@ function createCliProgram(logger: CliLogger): Command {
   program
     .command("build")
     .description("Compile the agent for production.")
-    .option("--agent-dir <path>", "Path to agent directory", "agent")
+    .option("--agent-dir <path>", "Path to agent directory (defaults to arcie.json agent.dir, then ./agent)")
     .option("--out-dir <path>", "Output directory", ".arcie")
-    .action(async (options: { agentDir: string; outDir: string }) => {
+    .action(async (options: { agentDir?: string; outDir: string }) => {
       const { buildCommand } = await import("./build");
       await buildCommand(options);
       logger.log(
@@ -192,11 +192,11 @@ function createCliProgram(logger: CliLogger): Command {
   program
     .command("serve")
     .description("Run the Runtime Contract server for a built agent (production).")
-    .option("--agent-dir <path>", "Path to agent directory", "agent")
+    .option("--agent-dir <path>", "Path to agent directory (defaults to arcie.json agent.dir, then ./agent)")
     .option("-p, --port <port>", "Port to listen on (defaults to $PORT or 8080)", parsePortOption)
     .option("--host <host>", "Host interface to bind", "0.0.0.0")
     .option("--no-memory", "Run stateless (no on-disk working/semantic memory)")
-    .action(async (options: { agentDir: string; port?: number; host?: string; memory?: boolean }) => {
+    .action(async (options: { agentDir?: string; port?: number; host?: string; memory?: boolean }) => {
       const { serveCommand } = await import("./serve");
       await serveCommand({
         agentDir: options.agentDir,
@@ -234,7 +234,7 @@ function createCliProgram(logger: CliLogger): Command {
     .description("Start the arcie development server or attach an interactive UI.")
     .option("-p, --port <port>", "Port to listen on", parsePortOption, 3000)
     .option("--host <host>", "Host interface to bind")
-    .option("--agent-dir <path>", "Path to agent directory", "agent")
+    .option("--agent-dir <path>", "Path to agent directory (defaults to arcie.json agent.dir, then ./agent)")
     .option("--input <text>", "Pre-fill the prompt input, or start onboarding with /model")
     .option("--no-ui", "Start the server without an interactive UI")
     .option("--name <name>", "Title shown in the terminal UI (defaults to the app folder name)")

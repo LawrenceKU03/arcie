@@ -24,6 +24,7 @@ export default defineConfig({
     "server/contract": "src/server/contract.ts",
     "server/manifest": "src/server/manifest.ts",
     "evals/index": "src/evals/index.ts",
+    "config/index": "src/config/arcie-json.ts",
   },
   format: ["esm"],
   target: "es2022",

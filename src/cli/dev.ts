@@ -5,6 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAgent } from "../loader";
 import { discoverAgent } from "../discover/index";
+import { loadArcieConfig, pickAgentDir, missingEnvVars } from "../config/arcie-json";
 import { showHeader } from "./banner";
 import { grey, dimmed } from "./style";
 import { startBlockChat } from "./tui/renderer/start-block-chat";
@@ -85,7 +86,7 @@ function serveWidget(req: IncomingMessage, res: ServerResponse): boolean {
 
 export interface DevOptions {
   port: string;
-  agentDir: string;
+  agentDir?: string;
   input?: boolean;
   /** Serve the Runtime Contract API only — skip the built-in chat widget. */
   noWeb?: boolean;
@@ -293,8 +294,12 @@ function openBrowser(url: string): void {
 }
 
 export async function devCommand(options: DevOptions): Promise<void> {
-  const agentDirPath = resolve(process.cwd(), options.agentDir);
+  const config = loadArcieConfig(process.cwd());
+  const agentDirPath = pickAgentDir(process.cwd(), options.agentDir, config);
   const requestedPort = parseInt(options.port, 10);
+  if (config) {
+    for (const warning of config.warnings) console.warn(`  ${grey("⚠")} ${warning}`);
+  }
 
   // Load .env.local from the project root before anything reads env keys.
   // The user puts CENCORI_API_KEY here; if we don't load it, both this

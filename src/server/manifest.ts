@@ -1,5 +1,6 @@
 import type { LoadedAgent } from "../loader";
 import type { DiscoveredAgent } from "../discover/index";
+import type { LoadedArcieConfig } from "../config/arcie-json";
 
 /**
  * The built agent manifest — the JSON description of an agent's capabilities
@@ -27,16 +28,47 @@ export interface BuiltManifest {
   };
   session: LoadedAgent["manifest"]["session"];
   policy: LoadedAgent["manifest"]["policy"];
+  /**
+   * Deploy metadata for the Cencori pipeline — how to build, boot, and
+   * provision this agent. Mirrors `arcie.json`'s runtime section with
+   * defaults filled in, so even a bare agent directory (no arcie.json)
+   * produces a fully deployable manifest.
+   */
+  deploy: {
+    buildCommand: string;
+    artifact: string;
+    startCommand: string;
+    /** Env vars the runtime requires — provisioned as secrets on deploy. */
+    env: string[];
+    /** The HTTP surface the deployed container must answer. */
+    contract: {
+      health: string;
+      invoke: string;
+      channel: string;
+      schedule: string;
+      manifest: string;
+    };
+  };
 }
+
+const DEFAULT_CONTRACT = {
+  health: "GET /_health",
+  invoke: "POST /invoke",
+  channel: "POST /channels/:name",
+  schedule: "POST /schedules/:name",
+  manifest: "GET /_manifest",
+} as const;
 
 /**
  * Projects a loaded agent (and, optionally, its filesystem discovery result)
  * into the serializable manifest shape. `discovered` adds the raw
- * filesystem-slot names alongside the merged/loaded capabilities.
+ * filesystem-slot names alongside the merged/loaded capabilities; `config`
+ * supplies the deploy metadata from the project's `arcie.json` (when present).
  */
 export function buildAgentManifest(
   agent: LoadedAgent,
   discovered?: DiscoveredAgent,
+  config?: LoadedArcieConfig | null,
 ): BuiltManifest {
   const manifest: BuiltManifest = {
     config: agent.manifest.config,
@@ -55,6 +87,19 @@ export function buildAgentManifest(
     ),
     session: agent.manifest.session,
     policy: agent.manifest.policy,
+    deploy: {
+      buildCommand: config?.buildCommand ?? "arcie build",
+      artifact: config?.artifact ?? "./.arcie/server.mjs",
+      startCommand: config?.startCommand ?? "node ./.arcie/server.mjs",
+      env: config?.env ?? [],
+      contract: {
+        health: config?.contract.health ?? DEFAULT_CONTRACT.health,
+        invoke: config?.contract.invoke ?? DEFAULT_CONTRACT.invoke,
+        channel: config?.contract.channel ?? DEFAULT_CONTRACT.channel,
+        schedule: config?.contract.schedule ?? DEFAULT_CONTRACT.schedule,
+        manifest: config?.contract.manifest ?? DEFAULT_CONTRACT.manifest,
+      },
+    },
   };
 
   if (discovered) {

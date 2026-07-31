@@ -1,10 +1,10 @@
-import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { startContractServer } from "../server/contract";
+import { loadArcieConfig, pickAgentDir, missingEnvVars } from "../config/arcie-json";
 import { grey, dimmed } from "./style";
 
 export interface ServeOptions {
-  agentDir: string;
+  agentDir?: string;
   port?: number;
   host?: string;
   memory?: boolean;
@@ -16,15 +16,19 @@ export interface ServeOptions {
  * `/_health`, `/invoke`, `/channels/:name`, `/schedules/:name`, `/_manifest`.
  */
 export async function serveCommand(options: ServeOptions): Promise<void> {
-  const agentDir = resolve(process.cwd(), options.agentDir);
+  const config = loadArcieConfig(process.cwd());
+  const agentDir = pickAgentDir(process.cwd(), options.agentDir, config);
 
   if (!existsSync(agentDir)) {
     console.error(`  ${grey("✖")} agent directory not found: ${agentDir}`);
     process.exit(1);
   }
 
-  if (!process.env.CENCORI_API_KEY) {
-    console.warn(`  ${grey("⚠")} CENCORI_API_KEY is not set — /invoke will fail until it is`);
+  // `arcie.json` runtime.env declares the keys the deployed container needs;
+  // without one, CENCORI_API_KEY is the one key /invoke cannot live without.
+  const missing = missingEnvVars(config);
+  for (const name of missing) {
+    console.warn(`  ${grey("⚠")} ${name} is not set — /invoke will fail until it is`);
   }
 
   const { port } = await startContractServer({
@@ -39,6 +43,10 @@ export async function serveCommand(options: ServeOptions): Promise<void> {
   console.log();
   console.log(`  ${dimmed(`arcie runtime  http://${host}:${port}`)}`);
   console.log(`  ${dimmed(`agent          ${agentDir}`)}`);
+  if (config) {
+    console.log(`  ${dimmed(`config         ${config.path}`)}`);
+    for (const warning of config.warnings) console.warn(`  ${grey("⚠")} ${warning}`);
+  }
   console.log();
   console.log(`  ${dimmed("routes")}`);
   console.log(`  ${grey("\xB7")} GET  /_health`);
