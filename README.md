@@ -20,9 +20,16 @@ my-agent/
 │   ├── schedules/         # recurring jobs
 │   ├── sessions/          # memory + session config
 │   └── policies/          # guardrails, budgets, security
-├── web/                   # chat UI (Next.js)
+├── arcie.json             # project + runtime manifest
 ├── package.json
 └── tsconfig.json
+```
+
+The chat UI ships **with arcie** as a built-in `<agent-chat>` web component — `arcie dev` serves it, so there's no per-project web app to scaffold. Embed it anywhere with a plain script tag:
+
+```html
+<script src="https://unpkg.com/arcie/dist/web/agent-chat.js"></script>
+<agent-chat endpoint="/invoke"></agent-chat>
 ```
 
 ## How it works
@@ -45,7 +52,7 @@ cd my-agent
 npm run dev
 ```
 
-Opens a web chat UI at `http://localhost:5173`.
+Opens a web chat UI at `http://localhost:3000`, served by the built-in `<agent-chat>` widget — no Next.js, no separate web app.
 
 ## Authoring
 
@@ -127,12 +134,23 @@ export default {
 
 ## Deploy
 
+`arcie build` compiles the agent into a deployable that answers the Cencori **Runtime Contract** — a container exposing five HTTP routes on `$PORT`:
+
+| Route | Purpose |
+| --- | --- |
+| `GET /_health` | readiness |
+| `POST /invoke` | run one agent turn (JSON, NDJSON, or SSE) |
+| `POST /channels/:name` | inbound channel event |
+| `POST /schedules/:name` | fire a named schedule |
+| `GET /_manifest` | the built agent manifest |
+
 ```bash
 export CENCORI_API_KEY=sk_...
-npm run build
+arcie build        # → .arcie/manifest.json + .arcie/server.mjs (self-contained)
+node .arcie/server.mjs   # or: arcie serve
 ```
 
-Push to GitHub and connect your repo to Brimble, Vercel, or any Node host.
+The bundled `server.mjs` boots the contract server for the agent — the Cencori pipeline containerizes it directly. Run it locally with `arcie serve`.
 
 ## Docs
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseAssistantOutput } from "../templates/web-chat/lib/assistant-output";
+import { parseAssistantOutput } from "../web/src/lib/assistant-output";
 
 describe("parseAssistantOutput", () => {
   it("separates concatenated tool-shaped JSON from the answer", () => {

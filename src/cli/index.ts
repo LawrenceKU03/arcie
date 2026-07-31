@@ -94,40 +94,25 @@ function createCliProgram(logger: CliLogger): Command {
 
   channels
     .command("add <kind>")
-    .description("Scaffold a channel (web, slack, discord).")
+    .description("Scaffold a messaging channel (slack, discord). Web chat is built in.")
     .option("--agent-dir <path>", "Path to agent directory", ".")
     .action(async (kind: string, options: { agentDir: string }) => {
       const agentDir = resolvePath(process.cwd(), options.agentDir);
-      const SUPPORTED = new Set(["web", "slack", "discord"]);
+      const SUPPORTED = new Set(["slack", "discord"]);
 
+      if (kind === "web") {
+        logger.error(
+          "web chat is built in — run `arcie dev` to serve the <agent-chat> widget (no scaffold needed).",
+        );
+        process.exit(1);
+      }
       if (!SUPPORTED.has(kind)) {
         logger.error(`unknown channel kind: ${kind}. supported: ${[...SUPPORTED].join(", ")}`);
         process.exit(1);
       }
 
       try {
-        if (kind === "web") {
-          const { scaffoldWebChat } = await import("./scaffold-web-chat");
-          const result = scaffoldWebChat(agentDir);
-          if (result.alreadyExisted) {
-            logger.error(`web already exists at ${result.targetPath}`);
-            process.exit(1);
-          }
-          logger.log(
-            renderCliTaggedLine(theme, {
-              message: `scaffolded ${result.targetPath}`,
-              tag: "channels",
-              tone: "success",
-            }),
-          );
-          logger.log(
-            renderCliTaggedLine(theme, {
-              message: "cd into it, then: npm install && cp .env.local.example .env.local && npm run dev",
-              tag: "next",
-              tone: "info",
-            }),
-          );
-        } else if (kind === "slack") {
+        if (kind === "slack") {
           const { scaffoldSlackChannel } = await import("./scaffold-slack");
           const result = scaffoldSlackChannel(agentDir);
           if (result.alreadyExisted) {
@@ -205,6 +190,23 @@ function createCliProgram(logger: CliLogger): Command {
     });
 
   program
+    .command("serve")
+    .description("Run the Runtime Contract server for a built agent (production).")
+    .option("--agent-dir <path>", "Path to agent directory", "agent")
+    .option("-p, --port <port>", "Port to listen on (defaults to $PORT or 8080)", parsePortOption)
+    .option("--host <host>", "Host interface to bind", "0.0.0.0")
+    .option("--no-memory", "Run stateless (no on-disk working/semantic memory)")
+    .action(async (options: { agentDir: string; port?: number; host?: string; memory?: boolean }) => {
+      const { serveCommand } = await import("./serve");
+      await serveCommand({
+        agentDir: options.agentDir,
+        port: options.port,
+        host: options.host,
+        memory: options.memory,
+      });
+    });
+
+  program
     .command("eval")
     .description("Run agent evals.")
     .option("--agent-dir <path>", "Path to agent directory", "agent")
@@ -262,8 +264,8 @@ function createCliProgram(logger: CliLogger): Command {
       parseContextSizeOption,
     )
     .option("--logs <mode>", "Which logs to show: all | stderr | none", parseLogsMode)
-    .option("--no-web", "Do not auto-start the web/ dev server")
-    .option("--no-open", "Do not auto-open the browser at the web channel URL")
+    .option("--no-web", "Serve the Runtime Contract API only — no built-in chat widget")
+    .option("--no-open", "Do not auto-open the browser at the chat widget URL")
     .action(async (options) => {
       const { devCommand } = await import("./dev");
       await devCommand({
@@ -278,7 +280,7 @@ function createCliProgram(logger: CliLogger): Command {
   return program;
 }
 
-const KNOWN_COMMANDS = new Set(["channels", "init", "build", "dev", "eval", "help"]);
+const KNOWN_COMMANDS = new Set(["channels", "init", "build", "dev", "eval", "serve", "help"]);
 
 function resolveArgv(argv: readonly string[]): string[] {
   if (argv.length === 0) return ["dev"];

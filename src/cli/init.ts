@@ -14,7 +14,6 @@ import { fileURLToPath } from "node:url";
 import { exec } from "node:child_process";
 import { createTuiPrompter } from "./setup/tui-prompter";
 import type { Prompter } from "./setup/prompter";
-import { scaffoldWebChat } from "./scaffold-web-chat";
 
 interface ToolEntry {
   id: string;
@@ -303,16 +302,8 @@ async function runInit(
     await selectTools(prompter, targetDir);
   }
 
-  // Always scaffold the web channel — it's the default UI users chat with.
-  try {
-    const webChat = scaffoldWebChat(targetDir);
-    if (!webChat.alreadyExisted) {
-      pinArcieDependency(join(webChat.targetPath, "package.json"));
-    }
-  } catch (err) {
-    prompter.log.error(`Failed to scaffold web channel: ${err instanceof Error ? err.message : String(err)}`);
-    return;
-  }
+  // The chat UI ships with arcie as a built-in <agent-chat> web component —
+  // `arcie dev` serves it. No per-project web app to scaffold or install.
 
   // Install root deps.
   if (!existsSync(join(targetDir, "node_modules"))) {
@@ -323,21 +314,6 @@ async function runInit(
     } catch {
       install.stop({ kind: "warning", message: "Root install failed — run `npm install` manually" });
       return;
-    }
-  }
-
-  // Install web-chat deps too (Next.js, arcie for the /api/chat route, etc.).
-  const webDir = join(targetDir, "web");
-  if (!existsSync(join(webDir, "node_modules"))) {
-    const webInstall = prompter.spinner("Installing web dependencies");
-    try {
-      await runNpmInstall(webDir);
-      webInstall.stop({ kind: "success", message: "Installed web dependencies" });
-    } catch {
-      webInstall.stop({
-        kind: "warning",
-        message: "Web install failed — `arcie dev` will retry on start",
-      });
     }
   }
 

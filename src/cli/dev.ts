@@ -1,23 +1,95 @@
-import { spawn, type ChildProcess } from "node:child_process";
-import { createServer } from "node:http";
+import { spawn } from "node:child_process";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { existsSync, readFileSync, watch, type FSWatcher } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { discoverAgents, loadAgent, loadAgentById } from "../loader";
+import { fileURLToPath } from "node:url";
+import { loadAgent } from "../loader";
 import { discoverAgent } from "../discover/index";
-import { streamAgent } from "../runner/index";
 import { showHeader } from "./banner";
 import { grey, dimmed } from "./style";
 import { startBlockChat } from "./tui/renderer/start-block-chat";
 import { handleSessionsRequest, getProviderApiKey, resolveProviderForModel } from "../server/index";
 import { createChannelMiddleware } from "../channels/server";
+import { contractRequestHandler } from "../server/contract";
+
+/**
+ * Locates the prebuilt `<agent-chat>` widget bundle inside the installed
+ * arcie package. The CLI bundle lands at various dist depths (tsup splitting),
+ * so walk up from this module until `dist/web/agent-chat.js` appears.
+ */
+function resolveWidgetDir(): string | undefined {
+  let current = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 8; i += 1) {
+    const candidate = resolve(current, "dist", "web");
+    if (existsSync(join(candidate, "agent-chat.js"))) return candidate;
+    const sibling = resolve(current, "web");
+    if (existsSync(join(sibling, "agent-chat.js"))) return sibling;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  return undefined;
+}
+
+const WIDGET_DIR = resolveWidgetDir();
+
+function widgetHostPage(): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>arcie</title>
+<style>html,body{margin:0;height:100%;background:#000}</style>
+</head>
+<body>
+<agent-chat endpoint="/invoke" agents-endpoint="/_agents"></agent-chat>
+<script src="/agent-chat.js"></script>
+</body>
+</html>`;
+}
+
+/**
+ * Serves the built-in chat widget: the host page at `/` and the bundle at
+ * `/agent-chat.js` (plus its stylesheet). Returns true when it handled the
+ * request. Replaces the retired Next.js `web/` app entirely.
+ */
+function serveWidget(req: IncomingMessage, res: ServerResponse): boolean {
+  const method = req.method ?? "GET";
+  const url = (req.url ?? "/").split("?")[0]!;
+  if (method !== "GET") return false;
+
+  if (url === "/" || url === "/index.html") {
+    const html = widgetHostPage();
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    res.end(html);
+    return true;
+  }
+
+  if (url === "/agent-chat.js" || url === "/agent-chat.css") {
+    if (!WIDGET_DIR) {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end("agent-chat bundle not found — run `npm run build` in the arcie package");
+      return true;
+    }
+    const file = join(WIDGET_DIR, url.slice(1));
+    if (!existsSync(file)) return false;
+    const type = url.endsWith(".css") ? "text/css" : "text/javascript";
+    res.writeHead(200, { "Content-Type": `${type}; charset=utf-8`, "Cache-Control": "no-cache" });
+    res.end(readFileSync(file));
+    return true;
+  }
+
+  return false;
+}
 
 export interface DevOptions {
   port: string;
   agentDir: string;
   input?: boolean;
-  /** Skip auto-starting the web/ dev server even when it exists. */
+  /** Serve the Runtime Contract API only — skip the built-in chat widget. */
   noWeb?: boolean;
-  /** Skip auto-opening the browser at the web channel URL. */
+  /** Skip auto-opening the browser at the chat widget URL. */
   noOpen?: boolean;
 }
 
@@ -220,132 +292,6 @@ function openBrowser(url: string): void {
   }
 }
 
-async function waitForHttp(url: string, timeoutMs = 30_000): Promise<boolean> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    try {
-      const res = await fetch(url, { method: "GET" });
-      if (res.status < 500) return true;
-    } catch {
-      // fetch throws for connection refused — keep polling
-    }
-    await new Promise((r) => setTimeout(r, 500));
-  }
-  return false;
-}
-
-interface WebChannelHandle {
-  readonly url: string;
-  readonly process: ChildProcess;
-}
-
-/**
- * Spawns the web/ dev server as a child process, waits for it to come up,
- * and returns a handle the caller can kill on shutdown. Returns undefined
- * when the directory isn't scaffolded, isn't installed, or fails to start
- * in time.
- */
-async function installWebDeps(webDir: string): Promise<boolean> {
-  return new Promise((resolve) => {
-    const child = spawn("npm", ["install", "--no-fund", "--no-audit"], {
-      cwd: webDir,
-      stdio: "ignore",
-    });
-    child.once("exit", (code) => resolve(code === 0));
-    child.once("error", () => resolve(false));
-  });
-}
-
-async function startWebChannel(
-  agentDir: string,
-  webPort: number,
-): Promise<WebChannelHandle | undefined> {
-  const projectRoot = dirname(agentDir);
-  const webDir = join(projectRoot, "web");
-  if (!existsSync(join(webDir, "package.json"))) return undefined;
-
-  if (!existsSync(join(webDir, "node_modules"))) {
-      console.log(`  ${dimmed(`web    installing deps (first run)…`)}`);
-    const installed = await installWebDeps(webDir);
-    if (!installed) {
-      console.log();
-      console.log(`  ${grey("⚠")} web install failed — try manually:`);
-      console.log(`  ${dimmed(`  cd ${webDir} && npm install`)}`);
-      console.log();
-      return undefined;
-    }
-  }
-
-  // ARCIE_AGENT_DIR points the Next.js /api/chat route at the agent
-  // files it should run. streamAgent() is called in-process now — no
-  // proxying, no separate arcie HTTP server. PORT is a hint: Next.js
-  // owns port selection (it falls back on conflicts itself), so we read
-  // the URL it actually bound from its output rather than probing and
-  // second-guessing it.
-  // Explicit ports make Next.js hard-fail when taken, so hint with a
-  // port that's actually free; the reported URL is still authoritative.
-  let portHint = webPort;
-  if (!(await isPortFree(webPort)) || !(await isPortFree(webPort, "127.0.0.1"))) {
-    try {
-      portHint = await findFreePort(webPort + 1);
-    } catch {
-      /* let Next.js report the conflict itself */
-    }
-  }
-
-  const child = spawn("npm", ["run", "dev"], {
-    cwd: webDir,
-    env: {
-      ...process.env,
-      ARCIE_AGENT_DIR: agentDir,
-      PORT: String(portHint),
-    },
-    stdio: ["ignore", "pipe", "pipe"],
-    detached: false,
-  });
-
-  const url = (await readNextLocalUrl(child, 45_000)) ?? `http://localhost:${portHint}`;
-  const ready = await waitForHttp(url, 45_000);
-  if (!ready) {
-    console.log();
-    console.log(`  ${grey("⚠")} web didn't come up within 45s`);
-    child.kill();
-    return undefined;
-  }
-
-  return { url, process: child };
-}
-
-/**
- * Watches the spawned dev server's output for the "Local: http://…"
- * line Next.js prints once it has bound a port. Returns undefined if
- * the line never shows (unusual output format) — callers fall back to
- * the requested port.
- */
-function readNextLocalUrl(child: ChildProcess, timeoutMs: number): Promise<string | undefined> {
-  return new Promise((resolve) => {
-    let buffer = "";
-    let settled = false;
-    const finish = (url?: string) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      child.stdout?.removeListener("data", onData);
-      child.stderr?.removeListener("data", onData);
-      resolve(url);
-    };
-    const timer = setTimeout(() => finish(undefined), timeoutMs);
-    const onData = (chunk: Buffer) => {
-      buffer += chunk.toString();
-      const match = buffer.match(/Local:\s+(https?:\/\/\S+)/);
-      if (match) finish(match[1]!.replace(/\/+$/, ""));
-    };
-    child.stdout?.on("data", onData);
-    child.stderr?.on("data", onData);
-    child.once("exit", () => finish(undefined));
-  });
-}
-
 export async function devCommand(options: DevOptions): Promise<void> {
   const agentDirPath = resolve(process.cwd(), options.agentDir);
   const requestedPort = parseInt(options.port, 10);
@@ -382,160 +328,31 @@ export async function devCommand(options: DevOptions): Promise<void> {
   console.log(`  ${modelLine}`);
   console.log();
 
-  const projectRoot = dirname(agentDirPath);
-  const webDir = join(projectRoot, "web");
-  const hasWeb = existsSync(webDir);
-  const wantsWeb = !options.input && options.noWeb !== true && hasWeb;
+  // One process, one port, no Next.js: the dev server bundles the local
+  // sessions gateway (for BYOK / failover), the built-in <agent-chat> widget,
+  // and the Runtime Contract routes the deployed agent will answer.
+  const wantsWidget = !options.input && options.noWeb !== true;
 
-  // ── Web-attached mode: one process, one port. Next.js owns /api/chat
-  //    and calls streamAgent() in-process. No proxy, no separate arcie HTTP.
-  //    Next.js also owns web port selection — the requested port is a hint,
-  //    and we report whatever it actually bound.
-  if (wantsWeb) {
-    const engine = await chooseEngine(agentModel);
-    if (engine.mode === "local" || engine.mode === "failover") {
-      const started = await startLocalGateway();
-      if (started) {
-        process.env.CENCORI_API_URL = started;
-      } else {
-        engine.mode = "cloud";
-      }
-    }
-    console.log(`  ${dimmed(`engine ${grey("\xB7")} ${describeEngine(engine)}`)}`);
-    if (engine.mode === "failover") {
-      console.log(`  ${grey("!")} cencori.com unreachable ${grey("\xB7")} failing over to local ${engine.provider} until it's back`);
-    }
-    if (engine.mode === "cloud-unreachable") {
-      console.log(`  ${grey("⚠")} cencori.com is unreachable — requests will fail until it recovers`);
-      console.log(`  ${dimmed(`  (set ${engine.provider ? providerKeyName(engine.provider) : "a provider key"} in .env.local to fail over locally)`)}`);
-    }
-
-    console.log(`  ${dimmed(`starting on http://localhost:${requestedPort}…`)}`);
-    const webChannel = await startWebChannel(agentDirPath, requestedPort);
-    if (webChannel === undefined) {
-      console.log(`  ${grey("⚠")} web channel failed to start`);
-      process.exit(1);
-    }
-    const boundPortMatch = webChannel.url.match(/:(\d+)$/);
-    if (boundPortMatch && boundPortMatch[1] !== String(requestedPort)) {
-      console.log(`  ${grey("!")} port ${requestedPort} was in use ${grey("\xB7")} next chose ${boundPortMatch[1]}`);
-    }
-    console.log(`  ${dimmed(`web    ${webChannel.url}`)}`);
-    console.log(`  ${dimmed(`api    ${webChannel.url}/api/chat`)}`);
-    // Provider keys are only the user's problem in BYOK mode — with a
-    // Cencori key, models come from Cencori and no other key is needed.
-    console.log();
-    console.log(`  ${dimmed("set CENCORI_API_KEY to use Cencori models")}`);
-    console.log();
-    console.log(`  ${dimmed("hot reload  edits to agent/*.ts land on the next request")}`);
-    console.log();
-    console.log(`  ${dimmed("Ctrl+C to stop")}`);
-    console.log();
-
-    if (options.noOpen !== true) openBrowser(webChannel.url);
-
-    const watcher = startAgentWatcher(agentDirPath);
-    const shutdown = () => {
-      watcher?.close();
-      webChannel.process.kill();
-      process.exit(0);
-    };
-    process.once("SIGINT", shutdown);
-    process.once("SIGTERM", shutdown);
-    return;
-  }
-
-  // ── JSON-only mode: no web/. Standalone HTTP server for
-  //    curl users, tests, and other connectors that hit the agent
-  //    directly (Slack, WhatsApp bots, etc. down the line).
-  const streamTurn = async (
-    res: import("node:http").ServerResponse,
-    body: string,
-    agentId: string | undefined,
-  ) => {
-    try {
-      const { message, stream } = JSON.parse(body);
-      if (typeof message !== "string" || message.length === 0) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: "message is required" }));
-        return;
-      }
-      const runOpts = {
-        hotReload: true,
-        ...(agentId !== undefined ? { agentId } : {}),
-      };
-      if (stream) {
-        res.writeHead(200, {
-          "Content-Type": "application/x-ndjson",
-          "Cache-Control": "no-cache",
-          Connection: "keep-alive",
-        });
-        for await (const event of streamAgent(agentDirPath, message, runOpts)) {
-          res.write(JSON.stringify(event) + "\n");
-        }
-        res.end();
-      } else {
-        res.writeHead(200, { "Content-Type": "application/json" });
-        for await (const _event of streamAgent(agentDirPath, message, runOpts)) {}
-        res.end(JSON.stringify({ status: "ok" }));
-      }
-    } catch (err) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: String(err) }));
-    }
-  };
-
-  const listAgents = async () => {
-    const discovered = discoverAgents(agentDirPath);
-    return Promise.all(
-      discovered.map(async ({ id }) => {
-        try {
-          const loaded = await loadAgentById(agentDirPath, id, { hotReload: true });
-          const { config } = loaded.manifest;
-          return {
-            id,
-            name: config.name ?? id,
-            model: config.model,
-            description: config.description ?? "",
-          };
-        } catch {
-          return { id, name: id, model: "", description: "" };
-        }
-      }),
-    );
-  };
+  const contractHandler = contractRequestHandler({
+    agentDir: agentDirPath,
+    hotReload: true,
+    memory: true,
+  });
 
   const server = createServer(async (req, res) => {
+    // Local sessions gateway — serves the agent loop in BYOK mode and as
+    // failover when cencori.com is unreachable (mounted at /v1/sessions).
     if (await handleSessionsRequest(req, res)) return;
-
+    // Built-in chat widget: host page at "/" + the prebuilt bundle.
+    if (wantsWidget && serveWidget(req, res)) return;
+    // Runtime Contract: /invoke, /_health, /_manifest, /_agents,
+    // /channels/:name, /schedules/:name — the exact surface arcie serve
+    // exposes in production, so dev and prod hit the same routes.
+    if (await contractHandler(req, res)) return;
+    // User-defined channel routes (/api/channels/...).
     if (channelMiddleware && await channelMiddleware(req, res)) return;
-
-    const method = req.method ?? "GET";
-    const url = req.url ?? "/";
-
-    if (method === "GET" && url === "/agents") {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(await listAgents()));
-      return;
-    }
-
-    const agentsMatch = url.match(/^\/agents\/([^/?]+)(?:\?.*)?$/);
-    if (method === "POST" && agentsMatch !== null) {
-      let body = "";
-      for await (const chunk of req) body += chunk;
-      await streamTurn(res, body, decodeURIComponent(agentsMatch[1]!));
-      return;
-    }
-
-    if (method === "POST" && url === "/") {
-      let body = "";
-      for await (const chunk of req) body += chunk;
-      await streamTurn(res, body, undefined);
-      return;
-    }
-
-    res.writeHead(404);
-    res.end("Not found");
+    res.writeHead(404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ error: "not found" }));
   });
 
   let boundPort: number;
@@ -549,26 +366,33 @@ export async function devCommand(options: DevOptions): Promise<void> {
     process.exit(1);
   }
 
-  // Same engine contract as web mode: a Cencori key means Cencori
-  // models — this process's built-in gateway only serves the loop in
-  // BYOK mode or as failover when cencori.com is unreachable.
-  const jsonEngine = await chooseEngine(agentModel);
-  if (!process.env.CENCORI_API_URL && (jsonEngine.mode === "local" || jsonEngine.mode === "failover")) {
+  // A Cencori key means Cencori models — this process's built-in gateway
+  // (mounted above at /v1/sessions) only serves the loop in BYOK mode or as
+  // failover when cencori.com is unreachable.
+  const engine = await chooseEngine(agentModel);
+  if (!process.env.CENCORI_API_URL && (engine.mode === "local" || engine.mode === "failover")) {
     process.env.CENCORI_API_URL = `http://127.0.0.1:${boundPort}/v1`;
   }
-  console.log(`  ${dimmed(`engine ${grey("\xB7")} ${describeEngine(jsonEngine)}`)}`);
-  if (jsonEngine.mode === "failover") {
-    console.log(`  ${grey("!")} cencori.com unreachable ${grey("\xB7")} failing over to local ${jsonEngine.provider} until it's back`);
+  console.log(`  ${dimmed(`engine ${grey("\xB7")} ${describeEngine(engine)}`)}`);
+  if (engine.mode === "failover") {
+    console.log(`  ${grey("!")} cencori.com unreachable ${grey("\xB7")} failing over to local ${engine.provider} until it's back`);
   }
-  if (jsonEngine.mode === "cloud-unreachable") {
+  if (engine.mode === "cloud-unreachable") {
     console.log(`  ${grey("⚠")} cencori.com is unreachable — requests will fail until it recovers`);
+    console.log(`  ${dimmed(`  (set ${engine.provider ? providerKeyName(engine.provider) : "a provider key"} in .env.local to fail over locally)`)}`);
   }
 
   if (boundPort !== requestedPort) {
     console.log(`  ${grey("!")} port ${requestedPort} was in use ${grey("\xB7")} using ${boundPort}`);
-    console.log();
   }
-  console.log(`  ${dimmed(`agent  http://localhost:${boundPort}`)}`);
+  const localUrl = `http://localhost:${boundPort}`;
+  if (wantsWidget) {
+    console.log(`  ${dimmed(`chat   ${localUrl}`)}`);
+    if (!WIDGET_DIR) {
+      console.log(`  ${grey("⚠")} widget bundle missing — run \`npm run build\` in the arcie package`);
+    }
+  }
+  console.log(`  ${dimmed(`api    ${localUrl}/invoke`)}`);
   console.log();
   console.log(`  ${dimmed("set CENCORI_API_KEY to use Cencori models")}`);
   console.log();
@@ -576,6 +400,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
   console.log();
   console.log(`  ${dimmed("Ctrl+C to stop")}`);
   console.log();
+
+  if (wantsWidget && options.noOpen !== true) openBrowser(localUrl);
 
   const watcher = startAgentWatcher(agentDirPath);
   const shutdown = () => {
