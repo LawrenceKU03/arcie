@@ -6,7 +6,7 @@ import { discoverAgent } from "../discover/index";
 import { streamAgent, type RunOptions } from "../runner/index";
 import { FileStore } from "../memory/file-store";
 import { buildAgentManifest } from "./manifest";
-import { loadArcieConfig } from "../config/arcie-json";
+import { loadArcieConfig, type LoadedArcieConfig } from "../config/arcie-json";
 import type { StreamEvent } from "../protocol/events";
 import type { ChannelRequest, ChannelResponse } from "../types";
 
@@ -51,6 +51,62 @@ export interface ContractHandlerOptions {
   agentDir: string;
   hotReload?: boolean;
   memory?: boolean;
+}
+
+/**
+ * The routes this server actually serves, keyed by the `runtime.contract`
+ * slot in arcie.json. `health` accepts the `/health` alias; every other slot
+ * has exactly one canonical route.
+ */
+const CONTRACT_SLOTS: ReadonlyArray<{
+  key: keyof NonNullable<LoadedArcieConfig["contract"]>;
+  supported: readonly string[];
+}> = [
+  { key: "health", supported: ["GET /_health", "GET /health"] },
+  { key: "invoke", supported: ["POST /invoke"] },
+  { key: "channel", supported: ["POST /channels/:name"] },
+  { key: "schedule", supported: ["POST /schedules/:name"] },
+  { key: "manifest", supported: ["GET /_manifest"] },
+];
+
+/** One declared `runtime.contract` route the server does not serve. */
+export interface ContractMismatch {
+  key: string;
+  /** What arcie.json declares, e.g. `"POST /chat"`. */
+  declared: string;
+  /** What this server actually answers for that slot. */
+  supported: readonly string[];
+}
+
+/**
+ * Compares the contract declared in `arcie.json` (`runtime.contract`) with
+ * the routes this server actually serves. Returns one entry per declared
+ * route the server does not answer. A config with no `contract` block
+ * declares nothing and always validates — that is the escape hatch for a
+ * platform serving a custom surface of its own.
+ */
+export function checkContractMismatches(config: LoadedArcieConfig | null): ContractMismatch[] {
+  if (!config) return [];
+  const mismatches: ContractMismatch[] = [];
+  for (const { key, supported } of CONTRACT_SLOTS) {
+    const declared = config.contract[key];
+    if (declared === undefined) continue;
+    if (!supported.includes(declared)) {
+      mismatches.push({ key, declared, supported });
+    }
+  }
+  return mismatches;
+}
+
+function contractMismatchError(mismatches: ContractMismatch[]): Error {
+  const lines = [
+    "arcie.json declares a runtime contract this server does not serve:",
+    ...mismatches.map(
+      (m) => `  ${m.key}: "${m.declared}" — server serves ${m.supported.join(", ")}`,
+    ),
+    "Fix runtime.contract in arcie.json, or remove the block to accept the defaults.",
+  ];
+  return new Error(lines.join("\n"));
 }
 
 interface InvokeFile {
@@ -147,6 +203,16 @@ export function contractRequestHandler(
   const agentDir = resolve(process.cwd(), options.agentDir);
   const hotReload = options.hotReload ?? false;
   const useMemory = options.memory ?? true;
+
+  // The deployed project carries arcie.json (if it has one). Its
+  // runtime.contract is a promise about what routes this process answers —
+  // refuse to boot when the promise and the route table disagree instead of
+  // silently serving a different surface than the platform provisioned.
+  const config = loadArcieConfig(agentDir);
+  const mismatches = checkContractMismatches(config);
+  if (mismatches.length > 0) {
+    throw contractMismatchError(mismatches);
+  }
 
   const memoryStore =
     useMemory && existsSync(agentDir)
@@ -373,26 +439,35 @@ export function contractRequestHandler(
 export function startContractServer(options: ContractServerOptions): Promise<{ server: Server; port: number }> {
   const port = options.port ?? (process.env.PORT ? Number(process.env.PORT) : 8080);
   const host = options.host ?? "0.0.0.0";
-  const handler = contractRequestHandler({
-    agentDir: options.agentDir,
-    hotReload: options.hotReload,
-    memory: options.memory,
-  });
-
-  const server = createServer(async (req, res) => {
-    try {
-      if (await handler(req, res)) return;
-      sendJson(res, 404, { error: "not found" });
-    } catch (err) {
-      if (!res.headersSent) {
-        sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
-      } else {
-        res.end();
-      }
-    }
-  });
 
   return new Promise((resolvePromise, reject) => {
+    let handler: (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;
+    try {
+      handler = contractRequestHandler({
+        agentDir: options.agentDir,
+        hotReload: options.hotReload,
+        memory: options.memory,
+      });
+    } catch (err) {
+      // Validation (arcie.json contract mismatch, malformed config) fails
+      // the boot as a rejection so every caller sees one async error path.
+      reject(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+
+    const server = createServer(async (req, res) => {
+      try {
+        if (await handler(req, res)) return;
+        sendJson(res, 404, { error: "not found" });
+      } catch (err) {
+        if (!res.headersSent) {
+          sendJson(res, 500, { error: err instanceof Error ? err.message : String(err) });
+        } else {
+          res.end();
+        }
+      }
+    });
+
     server.once("error", reject);
     server.listen(port, host, () => resolvePromise({ server, port }));
   });

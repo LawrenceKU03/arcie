@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { startContractServer } from "../server/contract";
+import { startContractServer, checkContractMismatches } from "../server/contract";
 import { loadArcieConfig, pickAgentDir, missingEnvVars } from "../config/arcie-json";
 import { grey, dimmed } from "./style";
 
@@ -29,6 +29,21 @@ export async function serveCommand(options: ServeOptions): Promise<void> {
   const missing = missingEnvVars(config);
   for (const name of missing) {
     console.warn(`  ${grey("⚠")} ${name} is not set — /invoke will fail until it is`);
+  }
+
+  // The declared runtime.contract is a promise about the routes this process
+  // answers. Refuse to boot when it disagrees with the actual route table —
+  // a silently different surface would break the platform that provisioned us.
+  const mismatches = checkContractMismatches(config);
+  if (mismatches.length > 0) {
+    for (const m of mismatches) {
+      console.error(
+        `  ${grey("✖")} contract.${m.key}: declares "${m.declared}" — server serves ${m.supported.join(" | ")}`,
+      );
+    }
+    console.error(`  ${grey("✖")} contract mismatch with ${config!.path} — refusing to boot`);
+    console.error(`  ${dimmed("  fix runtime.contract, or remove the block to accept the defaults")}`);
+    process.exit(1);
   }
 
   const { port } = await startContractServer({

@@ -60,7 +60,7 @@ Field semantics:
 - **`runtime.artifact`** — the file the build produces, relative to repo root. Its presence after a build is a good success check.
 - **`runtime.startCommand`** — run this at the repo root to start the container.
 - **`runtime.env`** — environment variables the runtime requires. Your dashboard should prompt for these on first deploy and store them as secrets. A legacy project without `runtime.env` requires at minimum `CENCORI_API_KEY`.
-- **`runtime.contract`** — the HTTP surface the started process answers. See [Runtime Contract](#runtime-contract) below. Treat this block as descriptive: it tells you which route to health-check and which routes are safe to expose publicly.
+- **`runtime.contract`** — the HTTP surface the started process answers. See [Runtime Contract](#runtime-contract) below. This block is **enforced**: `arcie serve` and the deployed `server.mjs` refuse to boot (exit 1) when it declares a route the server does not answer, rather than silently serving a different surface. The route list tells you which endpoint to health-check and which routes are safe to expose publicly.
 
 Older projects may still contain `apps` and `deploy` blocks instead of `runtime`. Those describe the retired Next.js layout. If you support them at all, treat `runtime` as taking precedence when both are present.
 
@@ -109,6 +109,8 @@ The started process answers a fixed set of routes on `$PORT`. This is the whole 
 | `POST /schedules/:name` | fire the named schedule |
 
 Anything else returns `404 {"error":"not found"}`.
+
+The route list above is the only contract this server serves, and it is enforced at boot: if the project's `arcie.json` declares a `runtime.contract` route that does not match (say, `"invoke": "POST /chat"`), `arcie serve` and the built `server.mjs` both refuse to start with a per-slot error and exit 1. A project with no `contract` block (or no `arcie.json`) skips validation — that is the escape hatch for a platform serving a custom surface of its own.
 
 `POST /invoke` takes a JSON body with `input` (or `message`) plus optional `sessionId`, `threadId`, and `agentId`. Response format is negotiated:
 
