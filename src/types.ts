@@ -104,6 +104,12 @@ export interface ChannelRequest {
   body: unknown;
   headers: Record<string, string>;
   method: string;
+  /**
+   * The request body exactly as received, before JSON parsing. Webhook
+   * signature verification (Slack HMAC, Discord ed25519) signs the raw
+   * bytes, so verification must see them untouched.
+   */
+  rawBody: string;
 }
 
 export interface ChannelResponse {

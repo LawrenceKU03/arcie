@@ -329,6 +329,7 @@ export function contractRequestHandler(
         Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : v ?? ""]),
       ),
       method: req.method ?? "POST",
+      rawBody: raw,
     };
     try {
       const result: ChannelResponse = await channel.handler(channelReq);

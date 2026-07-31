@@ -34,6 +34,7 @@ export function createChannelMiddleware(
           Object.entries(req.headers).map(([k, v]) => [k, Array.isArray(v) ? v.join(", ") : v ?? ""]),
         ),
         method: req.method ?? "GET",
+        rawBody: body,
       };
 
       try {

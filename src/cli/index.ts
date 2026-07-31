@@ -95,9 +95,11 @@ function createCliProgram(logger: CliLogger): Command {
   channels
     .command("add <kind>")
     .description("Scaffold a messaging channel (slack, discord). Web chat is built in.")
-    .option("--agent-dir <path>", "Path to agent directory", ".")
-    .action(async (kind: string, options: { agentDir: string }) => {
-      const agentDir = resolvePath(process.cwd(), options.agentDir);
+    .option("--agent-dir <path>", "Path to agent directory (defaults to arcie.json agent.dir, then ./agent)")
+    .action(async (kind: string, options: { agentDir?: string }) => {
+      const { loadArcieConfig, pickAgentDir } = await import("../config/arcie-json");
+      const config = loadArcieConfig(process.cwd());
+      const agentDir = pickAgentDir(process.cwd(), options.agentDir, config);
       const SUPPORTED = new Set(["slack", "discord"]);
 
       if (kind === "web") {
