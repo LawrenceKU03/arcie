@@ -45,12 +45,23 @@ export interface ContractServerOptions {
    * On by default; set false for a fully stateless runtime.
    */
   memory?: boolean;
+  /**
+   * Fail requests (and refuse boot on config problems) when a slot file
+   * — tool, skill, channel, ... — fails to import instead of serving with
+   * the file silently missing. On by default: this is the production entry,
+   * where a broken tool must surface as an error, not as a quietly smaller
+   * agent.
+   */
+  strict?: boolean;
 }
 
 export interface ContractHandlerOptions {
   agentDir: string;
   hotReload?: boolean;
   memory?: boolean;
+  /** Same semantics as `ContractServerOptions.strict`, off by default so
+   *  `arcie dev` keeps editing frictionless (warnings instead of refusals). */
+  strict?: boolean;
 }
 
 /**
@@ -203,6 +214,7 @@ export function contractRequestHandler(
   const agentDir = resolve(process.cwd(), options.agentDir);
   const hotReload = options.hotReload ?? false;
   const useMemory = options.memory ?? true;
+  const strict = options.strict ?? false;
 
   // The deployed project carries arcie.json (if it has one). Its
   // runtime.contract is a promise about what routes this process answers —
@@ -248,6 +260,7 @@ export function contractRequestHandler(
 
     const runOpts: RunOptions = {
       hotReload,
+      strict,
       ...(memoryStore ? { memoryStore, workingMemoryDir: resolve(agentDir, "sessions") } : {}),
       resourceId: "runtime",
       ...(body.agentId && body.agentId.length > 0 ? { agentId: body.agentId } : {}),
@@ -310,7 +323,7 @@ export function contractRequestHandler(
     res: ServerResponse,
     channelName: string,
   ): Promise<void> => {
-    const agent = await loadAgent(agentDir, { hotReload });
+    const agent = await loadAgent(agentDir, { hotReload, strict });
     const channel = agent.manifest.channels[channelName];
     if (!channel) {
       sendJson(res, 404, { error: `channel "${channelName}" not found` });
@@ -344,7 +357,7 @@ export function contractRequestHandler(
     res: ServerResponse,
     scheduleName: string,
   ): Promise<void> => {
-    const agent = await loadAgent(agentDir, { hotReload });
+    const agent = await loadAgent(agentDir, { hotReload, strict });
     const schedule = agent.manifest.schedules[scheduleName];
     if (!schedule) {
       sendJson(res, 404, { error: `schedule "${scheduleName}" not found` });
@@ -361,8 +374,8 @@ export function contractRequestHandler(
   const manifest = async (res: ServerResponse, agentId?: string): Promise<void> => {
     try {
       const agent = agentId
-        ? await loadAgentById(agentDir, agentId, { hotReload })
-        : await loadAgent(agentDir, { hotReload });
+        ? await loadAgentById(agentDir, agentId, { hotReload, strict })
+        : await loadAgent(agentDir, { hotReload, strict });
       const { agent: discovered } = discoverAgent(agentDir);
       // The deployed project carries arcie.json (if it has one) — merge its
       // deploy metadata into the manifest so the platform can provision
@@ -379,7 +392,7 @@ export function contractRequestHandler(
     const agents = await Promise.all(
       discovered.map(async ({ id }) => {
         try {
-          const loaded = await loadAgentById(agentDir, id, { hotReload });
+          const loaded = await loadAgentById(agentDir, id, { hotReload, strict });
           const { config } = loaded.manifest;
           return { id, name: config.name ?? id, model: config.model, description: config.description ?? "" };
         } catch {
@@ -448,6 +461,7 @@ export function startContractServer(options: ContractServerOptions): Promise<{ s
         agentDir: options.agentDir,
         hotReload: options.hotReload,
         memory: options.memory,
+        strict: options.strict ?? true,
       });
     } catch (err) {
       // Validation (arcie.json contract mismatch, malformed config) fails

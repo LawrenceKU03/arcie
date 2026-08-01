@@ -135,7 +135,10 @@ export async function buildCommand(options: {
   }
 
   try {
-    const agent = await loadAgent(agentDirPath);
+    // Strict: a tool/skill/channel that fails to import must fail the build —
+    // a bad push must never produce a container whose agent is quietly missing
+    // parts of itself.
+    const agent = await loadAgent(agentDirPath, { strict: true });
 
     mkdirSync(outDir, { recursive: true });
 
