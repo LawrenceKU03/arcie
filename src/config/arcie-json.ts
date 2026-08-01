@@ -225,13 +225,28 @@ export function pickAgentDir(
 }
 
 /**
- * The subset of `runtime.env` (or the legacy hardcoded default) not present
- * in `process.env`. Used to warn before boot so a deploy never starts with a
- * key missing.
+ * What a project needs when `arcie.json` is absent or declares no `runtime.env`
+ * — the one key `/invoke` cannot live without. Detection signals 2 and 3
+ * (an `arcie` dependency, a bare `agent/agent.ts`) hit this path.
+ */
+export const DEFAULT_REQUIRED_ENV = ["CENCORI_API_KEY"];
+
+/**
+ * The env vars a project requires: its declared `runtime.env`, or the default
+ * above when there is no config to read. Never empty, so a platform
+ * provisioning from this always asks for the key the runtime needs.
+ */
+export function requiredEnvVars(config: LoadedArcieConfig | null): string[] {
+  return config && config.env.length > 0 ? config.env : DEFAULT_REQUIRED_ENV;
+}
+
+/**
+ * The subset of `runtime.env` (or the default) not present in `process.env`.
+ * Used to warn before boot so a deploy never starts with a key missing.
  */
 export function missingEnvVars(
   config: LoadedArcieConfig | null,
-  legacyFallback: string[] = ["CENCORI_API_KEY"],
+  legacyFallback: string[] = DEFAULT_REQUIRED_ENV,
 ): string[] {
   const required = config && config.env.length > 0 ? config.env : legacyFallback;
   return required.filter((name) => !process.env[name]);

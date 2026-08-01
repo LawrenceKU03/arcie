@@ -1,6 +1,6 @@
 import type { LoadedAgent } from "../loader";
 import type { DiscoveredAgent } from "../discover/index";
-import type { LoadedArcieConfig } from "../config/arcie-json";
+import { requiredEnvVars, type LoadedArcieConfig } from "../config/arcie-json";
 
 /**
  * The built agent manifest — the JSON description of an agent's capabilities
@@ -91,7 +91,7 @@ export function buildAgentManifest(
       buildCommand: config?.buildCommand ?? "arcie build",
       artifact: config?.artifact ?? "./.arcie/server.mjs",
       startCommand: config?.startCommand ?? "node ./.arcie/server.mjs",
-      env: config?.env ?? [],
+      env: requiredEnvVars(config ?? null),
       contract: {
         health: config?.contract.health ?? DEFAULT_CONTRACT.health,
         invoke: config?.contract.invoke ?? DEFAULT_CONTRACT.invoke,
