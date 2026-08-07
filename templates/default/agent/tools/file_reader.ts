@@ -1,6 +1,16 @@
 import { defineTool } from "arcie";
 import { z } from "zod";
 import { readFileSync, existsSync, readdirSync, statSync } from "node:fs";
+import { resolve, sep } from "node:path";
+
+function resolveInside(root: string, rel: string): string {
+  const cleaned = rel.replace(/\\/g, "/").replace(/^\/+/, "");
+  const abs = resolve(root, cleaned);
+  if (abs !== root && !abs.startsWith(root + sep)) {
+    throw new Error(`Path escapes the project root: ${rel}`);
+  }
+  return abs;
+}
 
 export default defineTool({
   description:
@@ -10,7 +20,13 @@ export default defineTool({
   }),
   execute: ({ path }) => {
     const projectRoot = process.cwd();
-    const fullPath = `${projectRoot}/${path.replace(/^\/+/, "")}`;
+
+    let fullPath: string;
+    try {
+      fullPath = resolveInside(projectRoot, path);
+    } catch (err) {
+      return { path, error: err instanceof Error ? err.message : String(err), exists: false };
+    }
 
     if (!existsSync(fullPath)) {
       return { path, error: `File or directory not found: ${path}`, exists: false };

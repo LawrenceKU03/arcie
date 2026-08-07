@@ -1,7 +1,7 @@
 {
   "name": "arcie",
   "type": "module",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "description": "The electronic line — build agents at the speed of light.",
   "bin": {
     "arcie": "dist/cli/index.js"
@@ -30,7 +30,13 @@
     "./protocol": "./dist/protocol/events.js",
     "./connections": "./dist/connections/index.js",
     "./server": "./dist/server/index.js",
-    "./evals": "./dist/evals/index.js"
+    "./server/contract": "./dist/server/contract.js",
+    "./server/manifest": "./dist/server/manifest.js",
+    "./web": "./dist/web/agent-chat.js",
+    "./ui": "./dist/ui/index.js",
+    "./ui/styles.css": "./dist/ui/styles.css",
+    "./evals": "./dist/evals/index.js",
+    "./config": "./dist/config/index.js"
   },
   "typesVersions": {
     "*": {
@@ -42,7 +48,9 @@
     }
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && npm run build:web && npm run build:ui",
+    "build:web": "node scripts/build-web.mjs",
+    "build:ui": "tsup --config tsup.ui.config.ts && node scripts/build-ui-css.mjs",
     "dev": "tsup --watch",
     "typecheck": "tsc -p tsconfig.build.json --noEmit",
     "prepublishOnly": "npm run build",
@@ -68,13 +76,42 @@
     "@libsql/client": "^0.17.4",
     "chalk": "^5.3.0",
     "commander": "^12.0.0",
+    "esbuild": "^0.27.7",
     "ora": "^8.0.1",
     "zod": "^3.23.0",
     "zod-to-json-schema": "^3.25.2"
   },
+  "peerDependencies": {
+    "react": "^18 || ^19",
+    "react-dom": "^18 || ^19"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true },
+    "react-dom": { "optional": true }
+  },
   "devDependencies": {
+    "@hugeicons/core-free-icons": "^4.2.3",
+    "@hugeicons/react": "^1.1.9",
     "@microsoft/api-extractor": "^7.58.9",
+    "@r2wc/react-to-web-component": "^2.0.3",
+    "@tailwindcss/typography": "^0.5.15",
     "@types/node": "^26.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "autoprefixer": "^10.4.20",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.475.0",
+    "postcss": "^8.4.49",
+    "prism-react-renderer": "^2.4.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0",
+    "tailwind-merge": "^2.5.5",
+    "tailwindcss": "^3.4.17",
+    "tailwindcss-animate": "^1.0.7",
+    "thinking-orbs": "^0.1.1",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
