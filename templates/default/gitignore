@@ -1,0 +1,12 @@
+node_modules
+
+# arcie build + dev output
+.arcie
+
+# Secrets — .env.local ships with commented placeholders, but once you fill it
+# in it holds real API keys. Keep it off the remote.
+.env
+.env.local
+
+*.tsbuildinfo
+.DS_Store

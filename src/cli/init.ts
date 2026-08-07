@@ -77,10 +77,23 @@ function resolveTemplatesDir(): string {
 
 const TEMPLATES_DIR = resolveTemplatesDir();
 
+/**
+ * Template path → scaffolded path.
+ *
+ * npm strips a `.gitignore` out of a published package entirely, so the
+ * template ships it dotless and it is renamed on the way out. Verified against
+ * `npm pack`: `templates/default/.gitignore` never appears in the tarball,
+ * `templates/default/gitignore` does.
+ */
+export function scaffoldPath(relative: string): string {
+  if (relative === "gitignore") return ".gitignore";
+  return relative;
+}
+
 function copyTemplate(src: string, dest: string): void {
   for (const entry of collectFiles(src)) {
     const relative = entry.replace(src, "").replace(/^\//, "");
-    const destPath = join(dest, relative);
+    const destPath = join(dest, scaffoldPath(relative));
     if (entry.endsWith(".gitkeep")) {
       const parentDir = destPath.replace("/.gitkeep", "");
       mkdirSync(parentDir, { recursive: true });
