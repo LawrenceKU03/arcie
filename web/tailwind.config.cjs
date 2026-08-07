@@ -15,7 +15,23 @@ module.exports = {
     container: { center: true, padding: "2rem", screens: { "2xl": "1400px" } },
     extend: {
       fontFamily: {
-        sans: ["var(--font-inter)", "system-ui", "sans-serif"],
+        // `--font-inter` is defined on `.agent-chat-root`, but Tailwind's
+        // preflight puts this stack on `html` — an ancestor, where the token
+        // does not resolve. An unresolvable `var()` invalidates the whole
+        // declaration (the later entries do NOT act as fallbacks), so `html`
+        // would drop to the browser default serif and every element that
+        // inherits its font would follow. The inline fallback keeps the
+        // declaration valid wherever the token is out of scope.
+        sans: [
+          'var(--font-inter, "Inter Variable", system-ui)',
+          "-apple-system",
+          "BlinkMacSystemFont",
+          "Segoe UI",
+          "Roboto",
+          "Helvetica Neue",
+          "Arial",
+          "sans-serif",
+        ],
         mono: ["ui-monospace", "SFMono-Regular", "SF Mono", "Menlo", "Consolas", "monospace"],
       },
       colors: {

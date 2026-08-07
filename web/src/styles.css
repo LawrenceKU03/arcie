@@ -22,7 +22,11 @@
     --input: 240 4% 14%;
     --ring: 221 83% 53%;
     --radius: 0.75rem;
-    --font-inter: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    /* Inter ships inlined in this stylesheet (scripts/inter-face.mjs). The
+       trailing entries cover the first paint before the face loads, and any
+       glyph outside the bundled latin subset. */
+    --font-inter: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
 
     /* Layout: assistant content shares one left edge, then widens by role. */
     --content-width-response: 44rem;
@@ -101,7 +105,9 @@
     color-scheme: dark;
   }
   .agent-chat-root {
-    @apply bg-background text-foreground antialiased;
+    /* Own the font on the widget root rather than inheriting it. The kit is
+       embeddable, so the host page's `html` font is not ours to rely on. */
+    @apply bg-background text-foreground antialiased font-sans;
     height: 100vh;
     margin: 0;
     padding: 0;
