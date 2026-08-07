@@ -94,6 +94,140 @@ async function bundleServer(projectRoot: string, outDir: string): Promise<string
   }
 }
 
+/** Accepted filenames for the UI root component, in resolution order. */
+export const UI_ENTRY_FILES = ["app.tsx", "app.jsx"];
+
+/** Accepted filenames for the optional design-token module. */
+const UI_THEME_FILES = ["theme.ts", "theme.js"];
+
+/**
+ * The generated entry that mounts the project's `ui/app` into the page.
+ *
+ * When `ui/theme` is present its tokens are written as CSS custom properties
+ * on `.agent-chat-root` — the element `<AgentChat>` renders and the kit's
+ * stylesheet scopes its variables to. Overriding there rather than on `:root`
+ * is what lets a themed app and an embedded `<agent-chat>` widget coexist on
+ * one page without fighting.
+ */
+export function uiEntrySource(entryImport: string, themeImport: string | null): string {
+  return [
+    `import { createRoot } from "react-dom/client";`,
+    `import App from "${entryImport}";`,
+    themeImport ? `import theme from "${themeImport}";` : null,
+    `import "arcie/ui/styles.css";`,
+    ``,
+    themeImport
+      ? [
+          `const vars = Object.entries(theme ?? {})`,
+          `  .map(([key, value]) => "--" + key + ":" + value + ";")`,
+          `  .join("");`,
+          `if (vars) {`,
+          `  const style = document.createElement("style");`,
+          `  style.textContent = ".agent-chat-root{" + vars + "}";`,
+          `  document.head.appendChild(style);`,
+          `}`,
+          ``,
+        ].join("\n")
+      : null,
+    `const container = document.getElementById("root");`,
+    `if (!container) throw new Error("[arcie] #root not found in the host page");`,
+    `createRoot(container).render(<App />);`,
+    ``,
+  ]
+    .filter((line) => line !== null)
+    .join("\n");
+}
+
+/** The host page for the compiled UI. Kept minimal — the app owns the rest. */
+export function uiHtml(title: string): string {
+  const safeTitle = title.replace(/[<>&"]/g, (c) =>
+    ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]!,
+  );
+  return `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>${safeTitle}</title>
+    <link rel="stylesheet" href="./app.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
+`;
+}
+
+/**
+ * Compiles the project's `ui/` directory to static assets under
+ * `<outDir>/static/`. Returns null when there is no `ui/` — that is the
+ * zero-config path, where the default chat page serves instead.
+ *
+ * Unlike the server bundle, a `ui/` that exists but fails to compile throws:
+ * shipping a container whose frontend silently vanished is worse than a failed
+ * build.
+ */
+async function bundleUi(
+  projectRoot: string,
+  outDir: string,
+  title: string,
+): Promise<string | null> {
+  const uiDir = join(projectRoot, "ui");
+  if (!existsSync(uiDir)) return null;
+
+  const entryFile = UI_ENTRY_FILES.find((f) => existsSync(join(uiDir, f)));
+  if (!entryFile) {
+    throw new Error(
+      `ui/ has no ${UI_ENTRY_FILES.join(" or ")} — add one, or remove ui/ to use the default chat page`,
+    );
+  }
+
+  let esbuild: typeof import("esbuild");
+  try {
+    esbuild = await import("esbuild");
+  } catch {
+    throw new Error("compiling ui/ requires esbuild — install it in the project");
+  }
+
+  const staticDir = join(outDir, "static");
+  mkdirSync(staticDir, { recursive: true });
+
+  const themeFile = UI_THEME_FILES.find((f) => existsSync(join(uiDir, f)));
+  const stripExt = (f: string) => f.replace(/\.[jt]sx?$/, "");
+
+  try {
+    await esbuild.build({
+      stdin: {
+        contents: uiEntrySource(
+          `./ui/${stripExt(entryFile)}`,
+          themeFile ? `./ui/${stripExt(themeFile)}` : null,
+        ),
+        resolveDir: projectRoot,
+        sourcefile: "arcie-ui-entry.tsx",
+        loader: "tsx",
+      },
+      bundle: true,
+      platform: "browser",
+      format: "esm",
+      target: "es2022",
+      jsx: "automatic",
+      minify: true,
+      outfile: join(staticDir, "app.js"),
+      // React's ESM build branches on NODE_ENV; without this the bundle throws
+      // "process is not defined" the moment it runs in a browser.
+      define: { "process.env.NODE_ENV": '"production"' },
+      logLevel: "silent",
+    });
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`ui/ failed to compile\n${detail}`);
+  }
+
+  writeFileSync(join(staticDir, "index.html"), uiHtml(title));
+  return staticDir;
+}
+
 export async function buildCommand(options: {
   agentDir?: string;
   outDir: string;
@@ -164,6 +298,19 @@ export async function buildCommand(options: {
       console.log(`  ${grey("⚠ could not bundle server.mjs (esbuild unavailable or 'arcie' unresolved) — manifest written")}`);
     }
     console.log();
+
+    // Compile the project's frontend alongside the runtime — one command, two
+    // outputs. No ui/ directory means the default chat page serves instead.
+    const uiPath = await bundleUi(
+      projectRoot,
+      outDir,
+      (manifest.config as { name?: string } | undefined)?.name ?? "arcie agent",
+    );
+    if (uiPath) {
+      console.log(`  Compiled UI to ${dimmed(`${options.outDir}/static/`)}`);
+      console.log(`  ${grey("\xB7 index.html, app.js, app.css")}`);
+      console.log();
+    }
 
     console.log(`  ${grey("─".repeat(50))}`);
     console.log(`  ${grey("Build complete.")}`);
