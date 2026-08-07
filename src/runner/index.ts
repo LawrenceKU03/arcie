@@ -3,6 +3,7 @@ import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAgent, loadAgentById, type LoadedAgent } from "../loader";
 import { toModelOutput } from "../tools/index";
+import { createToolSyntaxFilter, stripToolSyntax } from "./tool-syntax";
 import { Memory } from "../memory/index";
 import type { TurnContext, ToolCallContext, ApprovalStrategy, ToolConfig, HookEvent, HookPayload } from "../types";
 import {
@@ -287,7 +288,8 @@ async function executeSubagent(
     }
   }
 
-  return output || inputStr;
+  const clean = stripToolSyntax(output);
+  return clean || inputStr;
 }
 
 function headers(apiKey: string, agent: LoadedAgent): Record<string, string> {
@@ -421,6 +423,18 @@ async function* readTurnSSE(
   let currentEvent = "";
   let textSoFar = "";
   const toolCalls: ToolCallInfo[] = [];
+  // Tool markup the provider failed to parse arrives as ordinary text
+  // deltas. Filter it out of everything downstream — the UI, memory, the
+  // channel replies — rather than streaming the model's plumbing.
+  const textFilter = createToolSyntaxFilter();
+  const warnIfLeaked = () => {
+    if (textFilter.leaked) {
+      console.warn(
+        "[arcie] Model emitted a tool call as plain text; the markup was stripped and the call did not run. " +
+          "This usually means the model's tool-call format was not parsed upstream.",
+      );
+    }
+  };
 
   while (true) {
     const { done, value } = await reader.read();
@@ -450,8 +464,11 @@ async function* readTurnSSE(
 
             case "output_text.delta": {
               if (parsed.delta) {
-                textSoFar += parsed.delta;
-                yield createMessageAppended(parsed.delta, textSoFar, 1, 0, turnId);
+                const visible = textFilter.push(parsed.delta);
+                if (visible) {
+                  textSoFar += visible;
+                  yield createMessageAppended(visible, textSoFar, 1, 0, turnId);
+                }
               }
               break;
             }
@@ -474,6 +491,12 @@ async function* readTurnSSE(
             }
 
             case "turn.paused": {
+              const tail = textFilter.flush();
+              if (tail) {
+                textSoFar += tail;
+                yield createMessageAppended(tail, textSoFar, 1, 0, turnId);
+              }
+              warnIfLeaked();
               currentEvent = "";
               return {
                 status: "paused",
@@ -484,6 +507,7 @@ async function* readTurnSSE(
 
             case "turn.completed": {
               const out = parsed.output;
+              textSoFar += textFilter.flush();
               let finalText = textSoFar;
               let finishReason: "stop" | "error" = "stop";
               if (out?.error) {
@@ -492,10 +516,13 @@ async function* readTurnSSE(
                 for (const item of out.output) {
                   if (item.type === "message") {
                     const tc = item.content?.find((c: { type: string; text?: string }) => c.type === "output_text");
-                    if (tc?.text) finalText = tc.text;
+                    // The non-streamed final text is a separate copy of the
+                    // same completion, so it carries the same markup.
+                    if (tc?.text) finalText = stripToolSyntax(tc.text);
                   }
                 }
               }
+              warnIfLeaked();
               textSoFar = finalText;
               yield createMessageCompleted(finalText, finishReason, 1, 0, turnId);
               yield createStepCompleted(finishReason, 1, 0, turnId);
@@ -507,6 +534,8 @@ async function* readTurnSSE(
             case "turn.failed": {
               const errRaw = parsed.output?.error;
               const errMsg = typeof errRaw === "string" ? errRaw : "Turn failed";
+              textSoFar += textFilter.flush();
+              warnIfLeaked();
               const finalText = textSoFar.length > 0 ? textSoFar : `Error: ${errMsg}`;
               yield createMessageCompleted(finalText, "error", 1, 0, turnId);
               yield createStepCompleted("error", 1, 0, turnId);
@@ -530,6 +559,8 @@ async function* readTurnSSE(
     }
   }
 
+  textSoFar += textFilter.flush();
+  warnIfLeaked();
   return { status: "completed", text: textSoFar } as TurnResult;
 }
 

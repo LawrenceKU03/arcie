@@ -54,6 +54,24 @@ beforeAll(async () => {
         res.end("upstream exploded");
         return;
       }
+      // A model whose tool-call markup was not parsed upstream: the call
+      // streams back as ordinary text, split across deltas.
+      if (typeof input === "string" && input.includes("leak")) {
+        res.writeHead(200, { "Content-Type": "text/event-stream" });
+        res.write("event: turn.started\n");
+        res.write(`data: ${JSON.stringify({ turn_number: 1, input_text: input })}\n\n`);
+        const leakText = `Sure.<function(updateWorkingMemory){"content": "x"}</function>Done.`;
+        for (const delta of ["Sure.<fun", `ction(updateWorkingMemory){"content": "x"}`, "</function>Done."]) {
+          res.write("event: output_text.delta\n");
+          res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+        }
+        res.write("event: turn.completed\n");
+        res.write(`data: ${JSON.stringify({ output: { output: [{ type: "message", content: [{ type: "output_text", text: leakText }] }] } })}\n\n`);
+        res.write("data: [DONE]\n\n");
+        res.end();
+        return;
+      }
+
       const isSubagent = req.url?.includes("sub.");
       const triggerSubagent = typeof input === "string" && input.includes("delegate");
       res.writeHead(200, { "Content-Type": "text/event-stream" });
@@ -101,6 +119,20 @@ describe("runAgent", () => {
     const r = await runAgent(FIXTURE, "hi", opts());
     expect(r.sessionId).toBe("sess_test_1");
     expect(r.output).toBe('Echo: "hi"');
+  });
+
+  it("strips tool-call markup the provider failed to parse", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const r = await runAgent(FIXTURE, "leak", opts());
+    warn.mockRestore();
+
+    expect(r.output).toBe("Sure.Done.");
+    const streamed = r.events
+      .filter((e) => e.type === "message.appended")
+      .map((e) => (e.data as { delta: string }).delta)
+      .join("");
+    expect(streamed).toBe("Sure.Done.");
+    expect(streamed).not.toContain("updateWorkingMemory");
   });
 
   it("emits the full protocol event sequence", async () => {
