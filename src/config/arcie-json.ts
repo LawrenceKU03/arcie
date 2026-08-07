@@ -237,7 +237,7 @@ export const DEFAULT_REQUIRED_ENV = ["CENCORI_API_KEY"];
  * provisioning from this always asks for the key the runtime needs.
  */
 export function requiredEnvVars(config: LoadedArcieConfig | null): string[] {
-  return config && config.env.length > 0 ? config.env : DEFAULT_REQUIRED_ENV;
+  return config && config.env.length > 0 ? [...config.env] : [...DEFAULT_REQUIRED_ENV];
 }
 
 /**

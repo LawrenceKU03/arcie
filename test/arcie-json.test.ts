@@ -8,6 +8,7 @@ import {
   findArcieJson,
   pickAgentDir,
   missingEnvVars,
+  requiredEnvVars,
   type LoadedArcieConfig,
 } from "../src/config/arcie-json";
 
@@ -164,5 +165,29 @@ describe("missingEnvVars", () => {
 
   it("uses the legacy CENCORI_API_KEY fallback for config-less projects", () => {
     expect(missingEnvVars(null)).toEqual(["CENCORI_API_KEY"]);
+  });
+});
+
+describe("requiredEnvVars", () => {
+  it("returns the config's declared runtime env", () => {
+    const config = { env: ["CENCORI_API_KEY", "TAVILY_API_KEY"] } as LoadedArcieConfig;
+    expect(requiredEnvVars(config)).toEqual(["CENCORI_API_KEY", "TAVILY_API_KEY"]);
+  });
+
+  // A project detected by an `arcie` dependency or a bare `agent/agent.ts` has
+  // no arcie.json to read. It must still report the key /invoke needs, or a
+  // platform provisioning from the manifest asks for no secrets at all and the
+  // container boots without CENCORI_API_KEY.
+  it("falls back to CENCORI_API_KEY with no config", () => {
+    expect(requiredEnvVars(null)).toEqual(["CENCORI_API_KEY"]);
+  });
+
+  it("falls back when the config declares an empty env", () => {
+    expect(requiredEnvVars({ env: [] } as unknown as LoadedArcieConfig)).toEqual(["CENCORI_API_KEY"]);
+  });
+
+  it("never hands out the shared default array", () => {
+    requiredEnvVars(null).push("MUTATED");
+    expect(requiredEnvVars(null)).toEqual(["CENCORI_API_KEY"]);
   });
 });
