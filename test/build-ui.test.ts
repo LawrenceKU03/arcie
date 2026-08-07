@@ -1,5 +1,8 @@
-import { describe, it, expect } from "vitest";
-import { uiEntrySource, uiHtml, UI_ENTRY_FILES } from "../src/cli/build";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { uiEntrySource, uiHtml, UI_ENTRY_FILES, resolveUiSources } from "../src/cli/ui-build";
 
 describe("uiEntrySource", () => {
   it("mounts the project's app component", () => {
@@ -60,5 +63,73 @@ describe("UI_ENTRY_FILES", () => {
   it("prefers the TypeScript entry", () => {
     expect(UI_ENTRY_FILES[0]).toBe("app.tsx");
     expect(UI_ENTRY_FILES).toContain("app.jsx");
+  });
+});
+
+describe("uiHtml live reload", () => {
+  it("is absent by default — production output must not poll a dev server", () => {
+    const html = uiHtml("agent");
+    expect(html).not.toContain("EventSource");
+    expect(html).not.toContain("_arcie/dev");
+  });
+
+  it("subscribes to the dev reload channel when requested", () => {
+    const html = uiHtml("agent", { liveReload: true });
+    expect(html).toContain(`new EventSource("/_arcie/dev")`);
+    expect(html).toContain("location.reload()");
+  });
+});
+
+describe("resolveUiSources", () => {
+  let root: string;
+
+  beforeEach(() => {
+    root = mkdtempSync(join(tmpdir(), "arcie-ui-"));
+  });
+
+  afterEach(() => {
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  const writeUi = (files: Record<string, string>) => {
+    mkdirSync(join(root, "ui"), { recursive: true });
+    for (const [name, body] of Object.entries(files)) {
+      writeFileSync(join(root, "ui", name), body);
+    }
+  };
+
+  // No ui/ is the zero-config path, not an error: the default chat page serves.
+  it("returns null when the project has no ui/", () => {
+    expect(resolveUiSources(root)).toBeNull();
+  });
+
+  it("resolves the entry without a theme", () => {
+    writeUi({ "app.tsx": "export default () => null;" });
+    expect(resolveUiSources(root)).toEqual({
+      entryImport: "./ui/app",
+      themeImport: null,
+    });
+  });
+
+  it("resolves the theme when present", () => {
+    writeUi({ "app.tsx": "export default () => null;", "theme.ts": "export default {};" });
+    expect(resolveUiSources(root)?.themeImport).toBe("./ui/theme");
+  });
+
+  it("accepts a .jsx entry", () => {
+    writeUi({ "app.jsx": "export default () => null;" });
+    expect(resolveUiSources(root)?.entryImport).toBe("./ui/app");
+  });
+
+  // A ui/ with no entry is a mistake worth surfacing — treating it as "no
+  // frontend" would silently ship the default page instead of the user's.
+  it("throws when ui/ exists but has no entry", () => {
+    mkdirSync(join(root, "ui"), { recursive: true });
+    expect(() => resolveUiSources(root)).toThrow(/no app\.tsx or app\.jsx/);
+  });
+
+  it("strips only the extension, not part of the name", () => {
+    writeUi({ "app.tsx": "export default () => null;" });
+    expect(resolveUiSources(root)?.entryImport).not.toContain(".tsx");
   });
 });

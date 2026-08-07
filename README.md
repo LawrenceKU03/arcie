@@ -29,8 +29,9 @@ my-agent/
 ```
 
 The frontend ships **with arcie** — no Next.js, no bundler config, no second
-framework. `arcie init` scaffolds a working `ui/`, and `arcie build` compiles it
-to static assets alongside the runtime, one command and two outputs:
+framework. `arcie init` scaffolds a working `ui/`, `arcie dev` serves it next to
+the agent on one port, and `arcie build` compiles it to static assets alongside
+the runtime:
 
 ```tsx
 // ui/app.tsx — yours to change
@@ -42,6 +43,9 @@ export default function App() {
 ```
 
 ```
+arcie dev             one port: your ui/, /invoke, and the local gateway
+                      edits to ui/* rebuild and refresh the browser
+
 arcie build
   → .arcie/server.mjs      the headless runtime
   → .arcie/static/         index.html, app.js, app.css
@@ -50,9 +54,6 @@ arcie build
 Compose the `arcie/ui` kit, drop in your own components, or rebuild the surface
 entirely on the `useChat` hook — it stays one build either way. Delete `ui/` and
 the default chat page serves instead.
-
-> `arcie dev` currently serves the default chat page, not your `ui/`. Run
-> `arcie build` to compile your frontend until dev-server integration lands.
 
 The same components also build to a standalone `<agent-chat>` web component, so
 you can embed an agent in a page you already own with a plain script tag:
