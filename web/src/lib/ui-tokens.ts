@@ -11,12 +11,4 @@ export const activityVisualTokens = {
     size: 16,
     strokeWidth: 1.55,
   },
-  triggerIcon: {
-    size: 15,
-    strokeWidth: 1.6,
-  },
-  thinkingOrb: {
-    size: 20,
-    speed: 0.95,
-  },
 } as const;
