@@ -4,7 +4,7 @@ import { loadAgent } from "../loader";
 import { discoverAgent } from "../discover/index";
 import { buildAgentManifest } from "../server/manifest";
 import { loadArcieConfig, pickAgentDir, missingEnvVars } from "../config/arcie-json";
-import { resolveUiSources, uiBuildOptions, uiHtml } from "./ui-build";
+import { copyBundledUiFavicon, resolveUiSources, uiBuildOptions, uiHtml } from "./ui-build";
 import { grey, dimmed } from "./style";
 
 /**
@@ -132,6 +132,7 @@ async function bundleUi(
   }
 
   writeFileSync(join(staticDir, "index.html"), uiHtml(title));
+  copyBundledUiFavicon(staticDir);
   return staticDir;
 }
 

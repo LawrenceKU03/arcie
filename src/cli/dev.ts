@@ -12,7 +12,14 @@ import { startBlockChat } from "./tui/renderer/start-block-chat";
 import { handleSessionsRequest, getProviderApiKey, resolveProviderForModel } from "../server/index";
 import { createChannelMiddleware } from "../channels/server";
 import { contractRequestHandler } from "../server/contract";
-import { resolveUiSources, uiBuildOptions, uiHtml } from "./ui-build";
+import {
+  copyBundledUiFavicon,
+  resolveBundledUiFavicon,
+  resolveUiSources,
+  UI_FAVICON_HREF,
+  uiBuildOptions,
+  uiHtml,
+} from "./ui-build";
 
 /**
  * Locates the prebuilt `<agent-chat>` widget bundle inside the installed
@@ -42,6 +49,7 @@ function widgetHostPage(): string {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>arcie</title>
+<link rel="icon" href="/${UI_FAVICON_HREF}" sizes="48x48" type="image/x-icon" />
 <style>html,body{margin:0;height:100%;background:#000}</style>
 </head>
 <body>
@@ -65,6 +73,12 @@ function serveWidget(req: IncomingMessage, res: ServerResponse): boolean {
     const html = widgetHostPage();
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     res.end(html);
+    return true;
+  }
+
+  if (url === "/favicon.ico") {
+    res.writeHead(200, { "Content-Type": "image/x-icon", "Cache-Control": "no-cache" });
+    res.end(readFileSync(resolveBundledUiFavicon()));
     return true;
   }
 
@@ -96,6 +110,7 @@ const DEV_UI_FILES: Record<string, string> = {
   "/app.css": "text/css",
   "/app.js.map": "application/json",
   "/app.css.map": "application/json",
+  "/favicon.ico": "image/x-icon",
 };
 
 /**
@@ -160,6 +175,7 @@ async function startDevUi(projectRoot: string, title: string): Promise<DevUi | n
   await ctx.watch();
 
   writeFileSync(join(outDir, "index.html"), uiHtml(title, { liveReload: true }));
+  copyBundledUiFavicon(outDir);
 
   return {
     serve(req, res) {
@@ -193,7 +209,7 @@ async function startDevUi(projectRoot: string, title: string): Promise<DevUi | n
         const file = join(outDir, url.slice(1));
         if (!existsSync(file)) return false;
         res.writeHead(200, {
-          "Content-Type": `${type}; charset=utf-8`,
+          "Content-Type": type.startsWith("image/") ? type : `${type}; charset=utf-8`,
           "Cache-Control": "no-cache",
         });
         res.end(readFileSync(file));

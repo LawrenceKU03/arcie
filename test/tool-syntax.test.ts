@@ -28,6 +28,22 @@ describe("stripToolSyntax", () => {
     expect(stripToolSyntax(`<tool_call>{"name": "search"}</tool_call>`)).toBe("");
   });
 
+  it("removes Gemini-style tool code and its leaked result", () => {
+    const input = [
+      "Let me check the docs.\n",
+      `<tool_code>print(search_docs(query="cencori setup"))</tool_code>`,
+      `<result>{"answer":"internal tool payload"}</result>`,
+      "\nHere is the setup guide.",
+    ].join("");
+
+    expect(stripToolSyntax(input)).toBe("Let me check the docs.\n\nHere is the setup guide.");
+  });
+
+  it("preserves standalone result tags used as ordinary XML", () => {
+    const input = "Return `<result>ok</result>` from the parser.";
+    expect(stripToolSyntax(input)).toBe(input);
+  });
+
   it("removes the python_tag block up to its end token", () => {
     const input = `<|python_tag|>search.call(q="x")<|eom_id|>Here is the answer.`;
     expect(stripToolSyntax(input)).toBe("Here is the answer.");
@@ -73,6 +89,19 @@ describe("createToolSyntaxFilter", () => {
   it("suppresses a call fed one character at a time", () => {
     const result = streamByChar(`Hi.<function=f>{"a": 1}</function> Bye.`);
     expect(result.text).toBe("Hi. Bye.");
+    expect(result.leaked).toBe(true);
+  });
+
+  it("suppresses split tool_code and result markers without leaking partial tags", () => {
+    const result = streamThrough([
+      "Checking.<tool_",
+      "code>print(search_docs())</tool_",
+      "code>\n<res",
+      "ult>{\"answer\":\"hidden\"}</res",
+      "ult>\nDone.",
+    ]);
+
+    expect(result.text).toBe("Checking.\n\nDone.");
     expect(result.leaked).toBe(true);
   });
 

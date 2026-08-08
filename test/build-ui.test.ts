@@ -1,8 +1,15 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { uiEntrySource, uiHtml, UI_ENTRY_FILES, resolveUiSources } from "../src/cli/ui-build";
+import {
+  copyBundledUiFavicon,
+  resolveBundledUiFavicon,
+  uiEntrySource,
+  uiHtml,
+  UI_ENTRY_FILES,
+  resolveUiSources,
+} from "../src/cli/ui-build";
 
 describe("uiEntrySource", () => {
   it("mounts the project's app component", () => {
@@ -43,6 +50,9 @@ describe("uiHtml", () => {
     const html = uiHtml("my-agent");
     expect(html).toContain(`<script type="module" src="./app.js">`);
     expect(html).toContain(`<link rel="stylesheet" href="./app.css" />`);
+    expect(html).toContain(
+      `<link rel="icon" href="./favicon.ico?v=9ff48ef2" sizes="48x48" type="image/x-icon" />`,
+    );
     expect(html).toContain(`<div id="root"></div>`);
   });
 
@@ -56,6 +66,20 @@ describe("uiHtml", () => {
     const html = uiHtml(`</title><script>alert(1)</script>`);
     expect(html).not.toContain("<script>alert(1)</script>");
     expect(html).toContain("&lt;/title&gt;");
+  });
+});
+
+describe("bundled UI favicon", () => {
+  it("copies the packaged Cencori icon beside generated UI assets", () => {
+    const outDir = mkdtempSync(join(tmpdir(), "arcie-favicon-"));
+    try {
+      copyBundledUiFavicon(outDir);
+      expect(readFileSync(join(outDir, "favicon.ico"))).toEqual(
+        readFileSync(resolveBundledUiFavicon()),
+      );
+    } finally {
+      rmSync(outDir, { recursive: true, force: true });
+    }
   });
 });
 

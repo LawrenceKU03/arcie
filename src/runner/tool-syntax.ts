@@ -19,6 +19,8 @@ type Marker = {
   open: string[];
   /** Literal closing token; when absent, everything after the open is dropped. */
   close?: string;
+  /** Result-like tags are only plumbing after a tool marker was suppressed. */
+  requiresToolContext?: boolean;
 };
 
 const MARKERS: Marker[] = [
@@ -27,6 +29,11 @@ const MARKERS: Marker[] = [
   // XML-ish call blocks some models copy out of prompt examples.
   { open: ["<function_calls>"], close: "</function_calls>" },
   { open: ["<invoke ", "<invoke>"], close: "</invoke>" },
+  // Gemini-style code execution copied into ordinary completion text.
+  { open: ["<tool_code>"], close: "</tool_code>" },
+  // `<result>` is generic enough to be legitimate XML, so only suppress it
+  // when the same completion has already leaked tool-call markup.
+  { open: ["<result>"], close: "</result>", requiresToolContext: true },
   // Llama's `<function=name>`, plus the malformed `<function(name)` variant
   // that slips past provider-side parsers.
   { open: ["<function=", "<function(", "<function ", "<function>"], close: "</function>" },
@@ -43,8 +50,14 @@ const OPEN_TOKENS: Array<{ token: string; marker: Marker }> = MARKERS.flatMap((m
 /** Longest opening token — bounds how much trailing text we hold back. */
 const MAX_OPEN_LEN = Math.max(...OPEN_TOKENS.map((t) => t.token.length));
 
-function matchOpen(lower: string, index: number): Marker | undefined {
-  return OPEN_TOKENS.find((t) => lower.startsWith(t.token, index))?.marker;
+function markerIsEligible(marker: Marker, hasToolContext: boolean): boolean {
+  return marker.requiresToolContext !== true || hasToolContext;
+}
+
+function matchOpen(lower: string, index: number, hasToolContext: boolean): Marker | undefined {
+  return OPEN_TOKENS.find(
+    (entry) => markerIsEligible(entry.marker, hasToolContext) && lower.startsWith(entry.token, index),
+  )?.marker;
 }
 
 /**
@@ -52,10 +65,12 @@ function matchOpen(lower: string, index: number): Marker | undefined {
  * a delta that ends mid-token (`"...<func"`) must be withheld until the next
  * delta arrives, or a split marker leaks one character at a time.
  */
-function couldStartMarker(lower: string, index: number): boolean {
+function couldStartMarker(lower: string, index: number, hasToolContext: boolean): boolean {
   const tail = lower.slice(index);
   if (tail.length >= MAX_OPEN_LEN) return false;
-  return OPEN_TOKENS.some((t) => t.token.startsWith(tail));
+  return OPEN_TOKENS.some(
+    (entry) => markerIsEligible(entry.marker, hasToolContext) && entry.token.startsWith(tail),
+  );
 }
 
 export interface ToolSyntaxFilter {
@@ -101,9 +116,9 @@ export function createToolSyntaxFilter(): ToolSyntaxFilter {
       while (index < buffer.length) {
         const char = buffer[index]!;
         if (char === "<" || char === "[") {
-          found = matchOpen(lower, index);
+          found = matchOpen(lower, index, leaked);
           if (found) break;
-          if (!final && couldStartMarker(lower, index)) break;
+          if (!final && couldStartMarker(lower, index, leaked)) break;
         }
         index += 1;
       }

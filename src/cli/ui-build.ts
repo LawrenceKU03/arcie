@@ -5,14 +5,43 @@
  * watch mode and serves it. Both go through here so the frontend a developer
  * sees locally is built the same way as the one that ships.
  */
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { copyFileSync, existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /** Accepted filenames for the UI root component, in resolution order. */
 export const UI_ENTRY_FILES = ["app.tsx", "app.jsx"];
 
 /** Accepted filenames for the optional design-token module. */
 export const UI_THEME_FILES = ["theme.ts", "theme.js"];
+
+/** Filename used by generated host pages and static UI bundles. */
+export const UI_FAVICON_FILE = "favicon.ico";
+
+/** Asset hash keeps browsers from reusing a cached missing/default favicon. */
+export const UI_FAVICON_HREF = `${UI_FAVICON_FILE}?v=9ff48ef2`;
+
+/**
+ * Finds Arcie's bundled Cencori favicon from both source and compiled layouts.
+ * Published CLI chunks can sit several directories below the package root, so
+ * resolve it the same way runtime bundle assets are located elsewhere.
+ */
+export function resolveBundledUiFavicon(): string {
+  let current = dirname(fileURLToPath(import.meta.url));
+  for (let depth = 0; depth < 8; depth += 1) {
+    const candidate = resolve(current, "assets", UI_FAVICON_FILE);
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+  throw new Error(`[arcie] bundled ${UI_FAVICON_FILE} not found`);
+}
+
+/** Copies the bundled favicon beside a generated host page. */
+export function copyBundledUiFavicon(outDir: string): void {
+  copyFileSync(resolveBundledUiFavicon(), join(outDir, UI_FAVICON_FILE));
+}
 
 export interface UiSources {
   /** Import specifier for the root component, relative to the project root. */
@@ -105,6 +134,7 @@ export function uiHtml(title: string, options: { liveReload?: boolean } = {}): s
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${safeTitle}</title>
+    <link rel="icon" href="./${UI_FAVICON_HREF}" sizes="48x48" type="image/x-icon" />
     <link rel="stylesheet" href="./app.css" />
   </head>
   <body>
