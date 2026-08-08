@@ -1,18 +1,21 @@
-import { createCliRenderer, TextAttributes } from "@opentui/core";
+import { createCliRenderer } from "@opentui/core";
 import { createRoot } from "@opentui/react";
+
+import { theme } from "../theme";
+import Header from "./components/Header";
+import InputBar from "./components/InputBar";
 
 function App() {
 	return (
-		<box alignItems="center" justifyContent="center" flexGrow={1}>
-			<box
-				justifyContent="center"
-				alignItems="center"
-				flexDirection="row"
-				gap={2}
-			>
-				<ascii-font font="slick" text="CENCORI" color="gray" />
-				<ascii-font font="slick" text="CODE" />
-			</box>
+		<box
+			alignItems="center"
+			justifyContent="center"
+			flexGrow={1}
+			gap={3}
+			backgroundColor={theme.backgroundColor}
+		>
+			<Header />
+			<InputBar />
 		</box>
 	);
 }
