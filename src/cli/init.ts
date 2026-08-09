@@ -14,7 +14,6 @@ import { fileURLToPath } from "node:url";
 import { exec } from "node:child_process";
 import { createTuiPrompter } from "./setup/tui-prompter";
 import type { Prompter } from "./setup/prompter";
-import { scaffoldWebChat } from "./scaffold-web-chat";
 
 interface ToolEntry {
   id: string;
@@ -22,6 +21,12 @@ interface ToolEntry {
   description: string;
   files: string[];
   needsApiKey?: string;
+  /**
+   * Grants the agent write access to the machine it runs on. Excluded from
+   * "All tools" and defaulted to No under "Choose individually" — reachable
+   * only by asking for it explicitly.
+   */
+  sensitive?: boolean;
 }
 
 const AVAILABLE_TOOLS: ToolEntry[] = [
@@ -40,7 +45,14 @@ const AVAILABLE_TOOLS: ToolEntry[] = [
   { id: "document_summarize", label: "document_summarize", description: "Summarize PDFs and image documents", files: ["agent/tools/document_summarize.ts"] },
   { id: "document_query", label: "document_query", description: "Ask questions about PDF and image documents", files: ["agent/tools/document_query.ts"] },
   { id: "researcher", label: "researcher (subagent)", description: "Deep research specialist subagent", files: ["agent/subagents/researcher/agent.ts", "agent/subagents/researcher/instructions.md", "agent/subagents/researcher/tools/lookup.ts"] },
+  { id: "write_file", label: "write_file", description: "Create and overwrite files on disk — the agent can modify your project", files: ["agent/tools/write_file.ts"], sensitive: true },
+  { id: "execute_command", label: "execute_command", description: "Run arbitrary shell commands on the host — full access to whatever the agent process can reach", files: ["agent/tools/execute_command.ts"], sensitive: true },
 ];
+
+/** The tools "All tools" installs — everything that cannot alter the host. */
+export const DEFAULT_TOOLS = AVAILABLE_TOOLS.filter((t) => !t.sensitive);
+
+export { AVAILABLE_TOOLS };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -303,16 +315,8 @@ async function runInit(
     await selectTools(prompter, targetDir);
   }
 
-  // Always scaffold the web channel — it's the default UI users chat with.
-  try {
-    const webChat = scaffoldWebChat(targetDir);
-    if (!webChat.alreadyExisted) {
-      pinArcieDependency(join(webChat.targetPath, "package.json"));
-    }
-  } catch (err) {
-    prompter.log.error(`Failed to scaffold web channel: ${err instanceof Error ? err.message : String(err)}`);
-    return;
-  }
+  // The chat UI ships with arcie as a built-in <agent-chat> web component —
+  // `arcie dev` serves it. No per-project web app to scaffold or install.
 
   // Install root deps.
   if (!existsSync(join(targetDir, "node_modules"))) {
@@ -323,21 +327,6 @@ async function runInit(
     } catch {
       install.stop({ kind: "warning", message: "Root install failed — run `npm install` manually" });
       return;
-    }
-  }
-
-  // Install web-chat deps too (Next.js, arcie for the /api/chat route, etc.).
-  const webDir = join(targetDir, "web");
-  if (!existsSync(join(webDir, "node_modules"))) {
-    const webInstall = prompter.spinner("Installing web dependencies");
-    try {
-      await runNpmInstall(webDir);
-      webInstall.stop({ kind: "success", message: "Installed web dependencies" });
-    } catch {
-      webInstall.stop({
-        kind: "warning",
-        message: "Web install failed — `arcie dev` will retry on start",
-      });
     }
   }
 
@@ -386,27 +375,28 @@ async function selectTools(
   const choice = await prompter.select({
     message: "Which tools would you like to include?",
     options: [
-      { value: "full", label: "All tools (recommended)", description: "web_search, fetch_url, calculator, grep, file_reader, current_time, search_docs, memory_query, vision_analyze, vision_ocr, vision_classify, document_extract, document_summarize, document_query + researcher subagent" },
+      { value: "full", label: "All tools (recommended)", description: DEFAULT_TOOLS.map((t) => t.label).join(", ") },
       { value: "minimal", label: "Minimal", description: "Only calculator + file_reader" },
-      { value: "custom", label: "Choose individually", description: "Pick each tool you want" },
+      { value: "custom", label: "Choose individually", description: "Pick each tool you want, including host access" },
     ],
   });
 
   const selected = new Set<string>();
 
   if (choice === "full" || choice === undefined) {
-    for (const tool of AVAILABLE_TOOLS) selected.add(tool.id);
+    for (const tool of DEFAULT_TOOLS) selected.add(tool.id);
   } else if (choice === "minimal") {
     selected.add("calculator");
     selected.add("file_reader");
   } else if (choice === "custom") {
     for (const tool of AVAILABLE_TOOLS) {
+      // Sensitive tools lead with "No" so the highlighted default never hands
+      // out host access to someone tapping through the prompts.
+      const yes = { value: true, label: `Yes${tool.needsApiKey ? ` (needs ${tool.needsApiKey})` : ""}`, description: tool.description };
+      const no = { value: false, label: "No" };
       const include = await prompter.select({
-        message: `Include ${tool.label}?`,
-        options: [
-          { value: true, label: `Yes${tool.needsApiKey ? ` (needs ${tool.needsApiKey})` : ""}`, description: tool.description },
-          { value: false, label: "No" },
-        ],
+        message: tool.sensitive ? `Include ${tool.label}? (grants host access)` : `Include ${tool.label}?`,
+        options: tool.sensitive ? [{ ...no, description: tool.description }, yes] : [yes, no],
       });
       if (include) selected.add(tool.id);
     }
@@ -418,6 +408,42 @@ async function selectTools(
       removeToolFiles(targetDir, tool);
     }
   }
+
+  pruneInstructions(targetDir, selected);
+}
+
+/**
+ * Drops instructions for tools the user did not install. Without this the
+ * agent is told to reach for tools that were never scaffolded — most visibly
+ * the self-improvement workflow, which "All tools" no longer installs.
+ */
+export function pruneInstructions(targetDir: string, selected: Set<string>): void {
+  const path = resolve(targetDir, "agent/instructions.md");
+  let content: string;
+  try {
+    content = readFileSync(path, "utf-8");
+  } catch {
+    return;
+  }
+
+  const dropped = AVAILABLE_TOOLS.filter((t) => !selected.has(t.id)).map((t) => t.id);
+  if (dropped.length === 0) return;
+
+  const lines = content.split("\n");
+  const kept = lines.filter((line) => {
+    const bullet = line.match(/^- \*\*([a-z_]+)\*\*/);
+    return !bullet || !dropped.includes(bullet[1]!);
+  });
+
+  // The self-improvement workflow needs both halves — read/edit and verify —
+  // so it only survives when both tools do.
+  let result = kept.join("\n");
+  if (!selected.has("write_file") || !selected.has("execute_command")) {
+    result = result.replace(/\n### Self-improvement\n[\s\S]*?(?=\n### )/, "");
+  }
+
+  // Collapse any run of blank lines the removals opened up.
+  writeFileSync(path, result.replace(/\n{3,}/g, "\n\n"));
 }
 
 function loadEnvFile(path: string): void {
