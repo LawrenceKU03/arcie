@@ -14,7 +14,10 @@
 	},
 	"dependencies": {
 		"@opentui/core": "^0.5.1",
+		"@opentui/keymap": "^0.5.1",
 		"@opentui/react": "^0.5.1",
-		"react": "^19.2.6"
+		"@types/react": "^19.2.18",
+		"opentui-spinner": "^0.0.7",
+		"react": "^19.2.8"
 	}
 }

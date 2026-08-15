@@ -1,31 +1,126 @@
-import { theme } from "../../../theme";
+import { useRef, useState, useEffect } from "react";
+import { useBindings } from "@opentui/keymap/react";
+
+import StatusBar from "../StatusBar";
+import Menu from "../Menu";
+
+import { TextareaRenderable } from "@opentui/core";
+import { useRenderer } from "@opentui/react";
+import { useDialog } from "../../providers/DialogProvider";
 
 const index = () => {
-  return (
-    <box width="100%" alignItems="center">
-      <box width="100%">
-        <box flexDirection="row" paddingBottom={0.5} paddingX={2}>
-          <text fg={theme.inputBar.thinking}>Thinking</text>
-          <text marginX={1}>*</text>
-          <text>Opus 4.6</text>
-        </box>
-        <box width="100%" borderColor="#fff" border={["top", "bottom"]}>
-          <box paddingX={3} paddingY={1} width="100%" gap={0.5}>
-            <box position="relative" justifyContent="center">
-              <box flexDirection="row" gap={2}>
-                <text>&gt;</text>
-                <textarea
-                  placeholder={`Try "Analyze this codebase"`}
-                  width="100%"
-                />
+	const [placeHolderText, setPlaceHolder] = useState<string>(
+		`Try "Analyze this codebase"`,
+	);
+	const [isMenuEnable, setIsMenuEnable] = useState<boolean>(false);
+	const [query, setQuery] = useState<string>("");
+	const { currentDialog } = useDialog();
 
-              </box>
-            </box>
-          </box>
-        </box>
-      </box>
-    </box>
-  );
+	const renderer = useRenderer();
+
+	const placeHolderTexts = useRef([
+		`Try "Analyze this codebase`,
+		`Integrate cencori MCP`,
+		`Press "q" to quit`,
+		`Tokenmaxxing szn?`,
+	]);
+	const [scrollBoxIndex, setScrollBoxIndex] = useState<number>(0);
+	const textareaInputRef = useRef<TextareaRenderable>(null);
+
+	useBindings(
+		() => ({
+			priority: 0,
+			enabled: currentDialog === null,
+			commands: [
+				{
+					name: "newline",
+					run() {
+						textareaInputRef.current?.setText(
+							textareaInputRef.current.plainText + "\n",
+						);
+					},
+				},
+				{
+					name: "quit",
+					run() {
+						renderer.destroy();
+					},
+				},
+			],
+			bindings: [{ key: "q", cmd: "quit" }],
+		}),
+		[currentDialog],
+	);
+
+	const shufflePlaceHolderText = () => {
+		const texts = placeHolderTexts.current;
+		setPlaceHolder((prev: string) => {
+			const next = texts[Math.floor(Math.random() * texts.length)];
+			const text =
+				next === prev && texts.length > 1
+					? texts[(texts.indexOf(next) + 1) % texts.length]
+					: next;
+			return text as string;
+		});
+	};
+
+	const handleSubmit = () => {
+		const text = textareaInputRef.current?.plainText ?? "";
+		if (text.trim()) {
+			textareaInputRef.current?.setText("");
+		}
+	};
+
+	useEffect(() => {
+		const interval = setInterval(shufflePlaceHolderText, 3_000);
+		return () => clearInterval(interval);
+	}, []);
+
+	return (
+		<box width="100%" alignItems="center">
+			<box width="100%">
+				<StatusBar mode="Planning" model="Claude Opus 4.6" />
+				<box width="100%" borderColor="#fff" border={["top", "bottom"]}>
+					<box paddingX={3} width="100%" gap={0.5}>
+						<box position="relative" justifyContent="center">
+							<box flexDirection="row" gap={2}>
+								<text>❯</text>
+								<textarea
+									ref={textareaInputRef}
+									placeholder={placeHolderText}
+									onContentChange={() => {
+										setIsMenuEnable(
+											!!textareaInputRef.current?.plainText.startsWith("/"),
+										);
+
+										if (!!textareaInputRef.current?.plainText.startsWith("/")) {
+											setQuery(textareaInputRef.current?.plainText);
+										}
+									}}
+									onSubmit={handleSubmit}
+									focused={!isMenuEnable}
+									width="100%"
+									keyBindings={
+										isMenuEnable || currentDialog
+											? []
+											: [{ name: "return", action: "submit" }]
+									}
+								/>
+							</box>
+						</box>
+					</box>
+				</box>
+			</box>
+			{isMenuEnable && (
+				<Menu
+					targetCommand={textareaInputRef.current?.plainText as string}
+					scrollBoxIndex={scrollBoxIndex}
+					setScrollBoxIndex={setScrollBoxIndex}
+					textareaInputRef={textareaInputRef}
+				/>
+			)}
+		</box>
+	);
 };
 
 export default index;
