@@ -1,56 +1,51 @@
 import type { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useBindings } from "@opentui/keymap/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-
-import type { Command } from "./types.ts";
 import { useDialog } from "../../providers/DialogProvider";
 import { useToast } from "../../providers/ToastProvider";
+import type { Model } from "../../server/Models.ts";
+import { useModels } from "../../providers/ModelProvider.tsx";
 
-interface MenuProps {
-	commandArray: Command[];
+interface ScrollablePickerProps {
+	models: Model[];
 	searchPlaceHolder?: string;
 }
 
-const Menu = ({
-	commandArray,
-	searchPlaceHolder = "Search commands...",
-}: MenuProps) => {
+const ScrollablePicker = ({
+	models,
+	searchPlaceHolder = "Search models...",
+}: ScrollablePickerProps) => {
 	const textareaInputRef = useRef<TextareaRenderable | null>(null);
 	const scrollBoxRef = useRef<ScrollBoxRenderable | null>(null);
-
 	const [scrollBoxIndex, setScrollBoxIndex] = useState<number>(0);
-	const [query, setQuery] = useState<string>("");
-
 	const toast = useToast();
 	const dialog = useDialog();
+	const { loading, setActiveModel } = useModels();
+	const [filteredModels, setFilteredModels] = useState<Model[]>(models ?? []);
 
-	const filteredCommands = useMemo(() => {
-		const q = query.trim().toLowerCase();
-		if (!q) return commandArray;
-		return commandArray.filter((cmd) => cmd.title.toLowerCase().startsWith(q));
-	}, [commandArray, query]);
+	useEffect(() => {
+		setFilteredModels(models ?? []);
+	}, [models]);
 
-	const MAX_VISIBLE_ITEMS = Math.min(filteredCommands.length, 5);
+	const MAX_VISIBLE_ITEMS = Math.min(filteredModels.length, 5) || 1;
 
-	const maxValueWidth = useMemo(() => {
-		if (filteredCommands.length === 0) return 0;
-		return Math.max(...filteredCommands.map((cmd) => cmd.value.length));
-	}, [filteredCommands]);
+	const maxValueWidth =
+		useMemo(() => {
+			if (filteredModels.length === 0) return 0;
+			return Math.max(
+				...filteredModels.map((model) => (model.name || model.id).length),
+			);
+		}, [filteredModels]) + 4;
 
 	useEffect(() => {
 		setScrollBoxIndex((prev) =>
-			Math.min(prev, Math.max(filteredCommands.length - 1, 0)),
+			Math.min(prev, Math.max(filteredModels.length - 1, 0)),
 		);
-	}, [filteredCommands.length]);
+	}, [filteredModels.length]);
 
 	useEffect(() => {
 		textareaInputRef.current?.focus();
 	}, []);
-
-	const clearInputBar = () => {
-		textareaInputRef.current?.setText("");
-		setQuery("");
-	};
 
 	useBindings(
 		() => ({
@@ -60,10 +55,9 @@ const Menu = ({
 				{
 					name: "move_up",
 					run: () => {
-						if (filteredCommands.length === 0) return;
+						if (filteredModels.length === 0) return;
 						const sb = scrollBoxRef.current;
 						const newIndex = Math.max(scrollBoxIndex - 1, 0);
-
 						setScrollBoxIndex(newIndex);
 						if (sb && newIndex < sb.scrollTop) {
 							sb.scrollTo(newIndex);
@@ -73,13 +67,12 @@ const Menu = ({
 				{
 					name: "move_down",
 					run: () => {
-						if (filteredCommands.length === 0) return;
+						if (filteredModels.length === 0) return;
 						const sb = scrollBoxRef.current;
 						const newIndex = Math.min(
 							scrollBoxIndex + 1,
-							filteredCommands.length - 1,
+							filteredModels.length - 1,
 						);
-
 						setScrollBoxIndex(newIndex);
 						if (sb) {
 							const visibleEnd = sb.scrollTop + sb.viewport.height - 1;
@@ -92,13 +85,11 @@ const Menu = ({
 				{
 					name: "execute_command",
 					run: () => {
-						const selected = filteredCommands[scrollBoxIndex];
-						if (selected?.action) {
-							selected.action({
-								toast,
-								dialog,
-								clearInputBar,
-							});
+						const selected = filteredModels[scrollBoxIndex];
+						if (selected) {
+							toast?.show(`Switched to ${selected.name}`);
+							setActiveModel(selected);
+							dialog?.setDialog(null);
 						}
 					},
 				},
@@ -109,7 +100,7 @@ const Menu = ({
 				{ key: "return", cmd: "execute_command" },
 			],
 		}),
-		[scrollBoxIndex, filteredCommands, dialog?.currentDialog, toast],
+		[scrollBoxIndex, filteredModels, dialog?.currentDialog, toast],
 	);
 
 	return (
@@ -118,42 +109,50 @@ const Menu = ({
 				ref={textareaInputRef}
 				placeholder={searchPlaceHolder}
 				padding={1}
-				onChange={(val: string) => setQuery(val)}
+				onContentChange={() => {
+					const query =
+						(textareaInputRef.current?.plainText as string)?.toLowerCase() ??
+						"";
+					setFilteredModels(
+						(models ?? []).filter((model) =>
+							(model.name || model.id).toLowerCase().startsWith(query),
+						),
+					);
+				}}
 			/>
-			<scrollbox
-				width="100%"
-				height={MAX_VISIBLE_ITEMS}
-				ref={scrollBoxRef}
-				flexDirection="column"
-				alignItems="center"
-			>
-				{filteredCommands.map((cmd, indx) => (
-					<box
-						key={cmd.value}
-						flexDirection="row"
-						alignItems="center"
-						backgroundColor={indx === scrollBoxIndex ? "gray" : "transparent"}
-					>
-						<text
-							fg="#fff"
-							marginRight={2}
-							width={maxValueWidth}
-							marginY="auto"
+
+			<scrollbox width="100%" height={MAX_VISIBLE_ITEMS} ref={scrollBoxRef}>
+				{filteredModels.map((model, indx) => {
+					const isSelected = indx === scrollBoxIndex;
+					return (
+						<box
+							key={model.id}
+							flexDirection="row"
+							alignItems="center"
+							backgroundColor={isSelected ? "gray" : "transparent"}
 						>
-							{cmd.value}
-						</text>
-					</box>
-				))}
-				{filteredCommands.length === 0 && (
-					<box justifyContent="center" alignItems="center">
-						<box paddingY={1}>
-							<spinner name="dots" color="#fff" />
+							<text
+								fg="#fff"
+								marginRight={2}
+								width={maxValueWidth}
+								marginY="auto"
+							>
+								{model.name || model.id}
+							</text>
 						</box>
-					</box>
-				)}
+					);
+				})}
 			</scrollbox>
+
+			{loading && (
+				<box justifyContent="center" alignItems="center">
+					<box paddingY={1}>
+						<spinner name="dots" color="#fff" />
+					</box>
+				</box>
+			)}
 		</box>
 	);
 };
 
-export default Menu;
+export default ScrollablePicker;

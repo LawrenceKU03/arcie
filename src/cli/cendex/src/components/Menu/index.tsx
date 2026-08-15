@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { ScrollBoxRenderable, TextareaRenderable } from "@opentui/core";
 import { useDialog } from "../../providers/DialogProvider";
 import { useToast } from "../../providers/ToastProvider";
+import { useModels } from "../../providers/ModelProvider";
 
 const MAX_VALUE_WIDTH = Math.max(...Commands.map((cmd) => cmd.value.length));
 const MAX_DESCRIPTION_WIDTH =
@@ -25,6 +26,7 @@ const Menu = ({
 	const MAX_VISIBLE_ITEMS = Math.min(filteredCommands.length, 14);
 	const toast = useToast();
 	const dialog = useDialog();
+	const { models } = useModels();
 
 	useEffect(() => {
 		setScrollBoxIndex((prev: number) =>
@@ -62,6 +64,7 @@ const Menu = ({
 								clearInputBar: () => {
 									textareaInputRef.current?.setText("");
 								},
+								models: models,
 							});
 						}
 					},

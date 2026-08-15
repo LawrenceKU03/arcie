@@ -5,10 +5,24 @@ export const theme = {
 		thinking: "#f54900",
 	},
 	toast: {
-		notification: "#1447E6",
-		error: "#E7000B",
-		success: "#00A63E",
+		notification: "#2B7FFF",
+		error: "#E60045",
+		success: "#4ADE80",
 		background: "#2c2c22",
 		duration: 3000,
+	},
+	message: {
+		error: {
+			border: "",
+			background: "",
+		},
+		bot: {
+			border: "",
+			background: "",
+		},
+		user: {
+			border: "",
+			background: "",
+		},
 	},
 };

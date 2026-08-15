@@ -1,8 +1,10 @@
 import path from "node:path";
+import { useModels } from "../providers/ModelProvider";
 
 const index = () => {
 	const logoPath = path.join(__dirname, "../logo.jpeg");
 
+	const { activeModel } = useModels();
 	return (
 		<box
 			flexDirection="row"
@@ -29,7 +31,7 @@ const index = () => {
 				<text>
 					<strong>Basecode v0.1.0</strong>
 				</text>
-				<text>Claude-Opus-4.6</text>
+				<text>Welcome to basecode by cencori!</text>
 				<text>~/arcie/</text>
 			</box>
 		</box>

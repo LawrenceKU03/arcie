@@ -6,16 +6,18 @@ import Menu from "../Menu";
 
 import { TextareaRenderable } from "@opentui/core";
 import { useRenderer } from "@opentui/react";
-import { useDialog } from "../../providers/DialogProvider";
+import {
+	useDialog,
+	type DialogContextValue,
+} from "../../providers/DialogProvider";
 
-const index = () => {
+const index = ({ action }: { action: (data?: any) => void }) => {
 	const [placeHolderText, setPlaceHolder] = useState<string>(
 		`Try "Analyze this codebase"`,
 	);
-	const [isMenuEnable, setIsMenuEnable] = useState<boolean>(false);
 	const [query, setQuery] = useState<string>("");
-	const { currentDialog } = useDialog();
-
+	const [isMenuEnable, setIsMenuEnable] = useState<boolean>(false);
+	const { currentDialog } = useDialog() as DialogContextValue;
 	const renderer = useRenderer();
 
 	const placeHolderTexts = useRef([
@@ -68,6 +70,7 @@ const index = () => {
 		const text = textareaInputRef.current?.plainText ?? "";
 		if (text.trim()) {
 			textareaInputRef.current?.setText("");
+			action({ query: text });
 		}
 	};
 

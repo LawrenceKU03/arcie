@@ -49,7 +49,7 @@ export const Toast = ({
 			borderColor={borderColors[type ?? ""] ?? theme.toast.notification}
 			border={["left", "right"]}
 			customBorderChars={{ ...EmptyBorder, vertical: "┃" }}
-			width="20%"
+			width="25%"
 			top={1}
 			right={2}
 			zIndex={1}
@@ -81,4 +81,3 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
 };
 
 export default ToastProvider;
-
