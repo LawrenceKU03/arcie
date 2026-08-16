@@ -8,9 +8,10 @@
  * once, alongside the components. See UI_STANDARD.md.
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, existsSync, statSync } from "node:fs";
+import { mkdirSync, existsSync, statSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { interFontFace } from "./inter-face.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const outCss = resolve(root, "dist/ui/styles.css");
@@ -36,6 +37,10 @@ if (!existsSync(outCss)) {
   console.error("[build-ui-css] tailwind produced no CSS at", outCss);
   process.exit(1);
 }
+
+// Inter travels inside the stylesheet as a data: URI — consumers import
+// `arcie/ui/styles.css` and get the font with it, no asset wiring.
+writeFileSync(outCss, interFontFace() + readFileSync(outCss, "utf-8"));
 
 const size = statSync(outCss).size;
 console.log(`[build-ui-css] dist/ui/styles.css  ${(size / 1024).toFixed(0)} KB`);

@@ -4,6 +4,7 @@ import { loadAgent } from "../loader";
 import { discoverAgent } from "../discover/index";
 import { buildAgentManifest } from "../server/manifest";
 import { loadArcieConfig, pickAgentDir, missingEnvVars } from "../config/arcie-json";
+import { copyBundledUiFavicon, resolveUiSources, uiBuildOptions, uiHtml } from "./ui-build";
 import { grey, dimmed } from "./style";
 
 /**
@@ -94,6 +95,47 @@ async function bundleServer(projectRoot: string, outDir: string): Promise<string
   }
 }
 
+/**
+ * Compiles the project's `ui/` directory to static assets under
+ * `<outDir>/static/`. Returns null when there is no `ui/` — that is the
+ * zero-config path, where the default chat page serves instead.
+ *
+ * Unlike the server bundle, a `ui/` that exists but fails to compile throws:
+ * shipping a container whose frontend silently vanished is worse than a failed
+ * build.
+ */
+async function bundleUi(
+  projectRoot: string,
+  outDir: string,
+  title: string,
+): Promise<string | null> {
+  const sources = resolveUiSources(projectRoot);
+  if (!sources) return null;
+
+  let esbuild: typeof import("esbuild");
+  try {
+    esbuild = await import("esbuild");
+  } catch {
+    throw new Error("compiling ui/ requires esbuild — install it in the project");
+  }
+
+  const staticDir = join(outDir, "static");
+  mkdirSync(staticDir, { recursive: true });
+
+  try {
+    await esbuild.build(
+      uiBuildOptions(projectRoot, sources, join(staticDir, "app.js"), "production"),
+    );
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`ui/ failed to compile\n${detail}`);
+  }
+
+  writeFileSync(join(staticDir, "index.html"), uiHtml(title));
+  copyBundledUiFavicon(staticDir);
+  return staticDir;
+}
+
 export async function buildCommand(options: {
   agentDir?: string;
   outDir: string;
@@ -164,6 +206,19 @@ export async function buildCommand(options: {
       console.log(`  ${grey("⚠ could not bundle server.mjs (esbuild unavailable or 'arcie' unresolved) — manifest written")}`);
     }
     console.log();
+
+    // Compile the project's frontend alongside the runtime — one command, two
+    // outputs. No ui/ directory means the default chat page serves instead.
+    const uiPath = await bundleUi(
+      projectRoot,
+      outDir,
+      (manifest.config as { name?: string } | undefined)?.name ?? "arcie agent",
+    );
+    if (uiPath) {
+      console.log(`  Compiled UI to ${dimmed(`${options.outDir}/static/`)}`);
+      console.log(`  ${grey("\xB7 index.html, app.js, app.css")}`);
+      console.log();
+    }
 
     console.log(`  ${grey("─".repeat(50))}`);
     console.log(`  ${grey("Build complete.")}`);

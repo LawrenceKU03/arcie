@@ -22,7 +22,11 @@
     --input: 240 4% 14%;
     --ring: 221 83% 53%;
     --radius: 0.75rem;
-    --font-inter: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    /* Inter ships inlined in this stylesheet (scripts/inter-face.mjs). The
+       trailing entries cover the first paint before the face loads, and any
+       glyph outside the bundled latin subset. */
+    --font-inter: "Inter Variable", system-ui, -apple-system, "Segoe UI", Roboto,
+      "Helvetica Neue", Arial, sans-serif;
 
     /* Layout: assistant content shares one left edge, then widens by role. */
     --content-width-response: 44rem;
@@ -54,10 +58,10 @@
     --radius-activity-payload: 0.875rem;
     --motion-fast: 180ms;
     --motion-standard: 200ms;
-    --motion-shimmer: 2.34s;
+    --motion-shimmer: 3.6s;
     --ease-standard: cubic-bezier(0.2, 0, 0, 1);
-    --shimmer-sweep-width: 5.625rem;
-    --shimmer-edge-offset: 2.8125rem;
+    --shimmer-sweep-width: 5.75rem;
+    --shimmer-edge-offset: 4.75rem;
     --z-activity-backdrop: 60;
     --z-activity-drawer: 61;
 
@@ -101,7 +105,9 @@
     color-scheme: dark;
   }
   .agent-chat-root {
-    @apply bg-background text-foreground antialiased;
+    /* Own the font on the widget root rather than inheriting it. The kit is
+       embeddable, so the host page's `html` font is not ours to rely on. */
+    @apply bg-background text-foreground antialiased font-sans;
     height: 100vh;
     margin: 0;
     padding: 0;
@@ -397,13 +403,17 @@
 
   .thinking-shimmer {
     color: transparent;
-    background-color: hsl(var(--muted-foreground) / 0.48);
+    background-color: hsl(var(--muted-foreground) / 0.56);
     background-image: linear-gradient(
       105deg,
       transparent 0%,
-      transparent 38%,
-      hsl(var(--foreground) / 0.9) 50%,
-      transparent 62%,
+      transparent 18%,
+      hsl(var(--foreground) / 0.72) 36%,
+      hsl(var(--foreground) / 0.92) 46%,
+      hsl(var(--foreground)) 50%,
+      hsl(var(--foreground) / 0.92) 54%,
+      hsl(var(--foreground) / 0.72) 64%,
+      transparent 82%,
       transparent 100%
     );
     background-size: var(--shimmer-sweep-width) 100%;
@@ -415,11 +425,10 @@
   }
 
   @keyframes thinking-shimmer {
-    0%,
-    12% {
+    0% {
       background-position: calc(-1 * var(--shimmer-edge-offset)) 0;
     }
-    88%,
+    44%,
     100% {
       background-position: calc(100% + var(--shimmer-edge-offset)) 0;
     }
@@ -539,11 +548,6 @@
   .activity-trigger:hover .activity-trigger-label,
   .activity-trigger:focus-visible .activity-trigger-label {
     color: hsl(var(--muted-foreground));
-  }
-
-  .activity-trigger-icon {
-    transition-duration: var(--motion-standard);
-    transition-timing-function: var(--ease-standard);
   }
 
   .activity-reveal {

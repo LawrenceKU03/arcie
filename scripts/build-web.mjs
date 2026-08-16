@@ -12,10 +12,11 @@
  * `arcie/web` subpath. No Next.js, no framework shell.
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, copyFileSync, existsSync, statSync } from "node:fs";
+import { mkdirSync, copyFileSync, existsSync, statSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as esbuild from "esbuild";
+import { interFontFace } from "./inter-face.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const genDir = resolve(root, "web/.gen");
@@ -45,6 +46,11 @@ if (!existsSync(genCss)) {
   console.error("[build-web] tailwind produced no CSS at", genCss);
   process.exit(1);
 }
+
+// ── 1b. Inline Inter ─────────────────────────────────────────────────────
+// Prepended after Tailwind rather than @import'ed into the source, so the
+// base64 payload never lands in a file anyone has to read or diff.
+writeFileSync(genCss, interFontFace() + readFileSync(genCss, "utf-8"));
 
 // ── 2. esbuild bundle ────────────────────────────────────────────────────
 await esbuild.build({

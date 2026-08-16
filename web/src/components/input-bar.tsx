@@ -81,7 +81,7 @@ export function InputBar({
       <div className="mx-auto w-full max-w-3xl">
         <div
           className={cn(
-            "relative flex flex-col rounded-2xl border border-border/60 bg-muted backdrop-blur-md p-3 transition-all",
+            "relative flex flex-col rounded-[1.75rem] border border-border/60 bg-muted backdrop-blur-md p-3 transition-all",
             "hover:border-border/70 hover:bg-muted",
             "focus-within:border-border/80 focus-within:ring-1 focus-within:ring-white/20",
           )}

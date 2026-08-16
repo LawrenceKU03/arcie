@@ -2,11 +2,9 @@
 
 import * as React from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { ThinkingOrb } from "thinking-orbs";
 import {
   Activity01Icon,
   AlertCircleIcon,
-  ArrowDown01Icon,
   ArrowRight01Icon,
   Database01Icon,
   File01Icon,
@@ -201,35 +199,15 @@ export function ActivityPanel({
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         className={cn(
-          "activity-trigger group -ml-1 inline-flex items-center gap-2 rounded-sm py-1 text-left",
+          "activity-trigger inline-flex items-center rounded-sm py-1 text-left",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/20 focus-visible:ring-offset-4 focus-visible:ring-offset-background",
         )}
       >
         {streaming ? (
-          <>
-            <ThinkingOrb
-              state="working"
-              size={activityVisualTokens.thinkingOrb.size}
-              speed={activityVisualTokens.thinkingOrb.speed}
-              aria-hidden="true"
-              className="shrink-0"
-            />
-            <ThinkingIndicator label={model.activeLabel} level="heading" />
-          </>
+          <ThinkingIndicator label={model.activeLabel} level="heading" />
         ) : (
           <span className="activity-trigger-label tabular-nums">{model.completedLabel}</span>
         )}
-        <HugeiconsIcon
-          icon={ArrowDown01Icon}
-          size={activityVisualTokens.triggerIcon.size}
-          color="currentColor"
-          strokeWidth={activityVisualTokens.triggerIcon.strokeWidth}
-          aria-hidden="true"
-          className={cn(
-            "activity-trigger-icon text-muted-foreground/50 transition-transform group-hover:text-muted-foreground",
-            open && "rotate-180",
-          )}
-        />
       </button>
 
       {open && (

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { existsSync, readFileSync, watch, type FSWatcher } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, watch, type FSWatcher } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAgent } from "../loader";
@@ -12,6 +12,14 @@ import { startBlockChat } from "./tui/renderer/start-block-chat";
 import { handleSessionsRequest, getProviderApiKey, resolveProviderForModel } from "../server/index";
 import { createChannelMiddleware } from "../channels/server";
 import { contractRequestHandler } from "../server/contract";
+import {
+  copyBundledUiFavicon,
+  resolveBundledUiFavicon,
+  resolveUiSources,
+  UI_FAVICON_HREF,
+  uiBuildOptions,
+  uiHtml,
+} from "./ui-build";
 
 /**
  * Locates the prebuilt `<agent-chat>` widget bundle inside the installed
@@ -41,6 +49,7 @@ function widgetHostPage(): string {
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>arcie</title>
+<link rel="icon" href="/${UI_FAVICON_HREF}" sizes="48x48" type="image/x-icon" />
 <style>html,body{margin:0;height:100%;background:#000}</style>
 </head>
 <body>
@@ -67,6 +76,12 @@ function serveWidget(req: IncomingMessage, res: ServerResponse): boolean {
     return true;
   }
 
+  if (url === "/favicon.ico") {
+    res.writeHead(200, { "Content-Type": "image/x-icon", "Cache-Control": "no-cache" });
+    res.end(readFileSync(resolveBundledUiFavicon()));
+    return true;
+  }
+
   if (url === "/agent-chat.js" || url === "/agent-chat.css") {
     if (!WIDGET_DIR) {
       res.writeHead(500, { "Content-Type": "text/plain" });
@@ -82,6 +97,133 @@ function serveWidget(req: IncomingMessage, res: ServerResponse): boolean {
   }
 
   return false;
+}
+
+/** A running dev-mode UI build: serves the compiled assets and rebuilds on edit. */
+interface DevUi {
+  serve(req: IncomingMessage, res: ServerResponse): boolean;
+  close(): Promise<void>;
+}
+
+const DEV_UI_FILES: Record<string, string> = {
+  "/app.js": "text/javascript",
+  "/app.css": "text/css",
+  "/app.js.map": "application/json",
+  "/app.css.map": "application/json",
+  "/favicon.ico": "image/x-icon",
+};
+
+/**
+ * Compiles the project's `ui/` in watch mode and serves it at `/`.
+ *
+ * Returns null when there is no `ui/` — dev then falls back to the built-in
+ * `<agent-chat>` page, which is what a project that deleted its frontend (or
+ * predates the `ui/` convention) should still get.
+ *
+ * A failing build is deliberately non-fatal: the watcher stays up, the error
+ * prints, and the next successful rebuild pushes a reload to the browser. Dev
+ * servers that exit on a typo are miserable.
+ */
+async function startDevUi(projectRoot: string, title: string): Promise<DevUi | null> {
+  let sources;
+  try {
+    sources = resolveUiSources(projectRoot);
+  } catch (err) {
+    console.log(`  ${grey("⚠")} ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
+  if (!sources) return null;
+
+  let esbuild: typeof import("esbuild");
+  try {
+    esbuild = await import("esbuild");
+  } catch {
+    console.log(`  ${grey("⚠")} ui/ found but esbuild is unavailable — serving the default chat page`);
+    return null;
+  }
+
+  const outDir = join(projectRoot, ".arcie", "dev");
+  mkdirSync(outDir, { recursive: true });
+
+  const clients = new Set<ServerResponse>();
+  const reloadPlugin: import("esbuild").Plugin = {
+    name: "arcie-dev-reload",
+    setup(build) {
+      build.onEnd((result) => {
+        if (result.errors.length > 0) {
+          for (const e of result.errors) {
+            console.log(`  ${grey("✖")} ui · ${e.text}`);
+          }
+          return;
+        }
+        for (const client of clients) client.write("data: reload\n\n");
+      });
+    },
+  };
+
+  const ctx = await esbuild.context({
+    ...uiBuildOptions(projectRoot, sources, join(outDir, "app.js"), "development"),
+    plugins: [reloadPlugin],
+  });
+
+  // Build once up front so the first request is served something, then watch.
+  try {
+    await ctx.rebuild();
+  } catch {
+    /* errors already reported by the onEnd hook */
+  }
+  await ctx.watch();
+
+  writeFileSync(join(outDir, "index.html"), uiHtml(title, { liveReload: true }));
+  copyBundledUiFavicon(outDir);
+
+  return {
+    serve(req, res) {
+      if ((req.method ?? "GET") !== "GET") return false;
+      const url = (req.url ?? "/").split("?")[0]!;
+
+      if (url === "/" || url === "/index.html") {
+        res.writeHead(200, {
+          "Content-Type": "text/html; charset=utf-8",
+          "Cache-Control": "no-cache",
+        });
+        res.end(readFileSync(join(outDir, "index.html")));
+        return true;
+      }
+
+      // Long-lived reload channel. Held open until the browser goes away.
+      if (url === "/_arcie/dev") {
+        res.writeHead(200, {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        });
+        res.write("retry: 1000\n\n");
+        clients.add(res);
+        req.on("close", () => clients.delete(res));
+        return true;
+      }
+
+      const type = DEV_UI_FILES[url];
+      if (type) {
+        const file = join(outDir, url.slice(1));
+        if (!existsSync(file)) return false;
+        res.writeHead(200, {
+          "Content-Type": type.startsWith("image/") ? type : `${type}; charset=utf-8`,
+          "Cache-Control": "no-cache",
+        });
+        res.end(readFileSync(file));
+        return true;
+      }
+
+      return false;
+    },
+    async close() {
+      for (const client of clients) client.end();
+      clients.clear();
+      await ctx.dispose();
+    },
+  };
 }
 
 export interface DevOptions {
@@ -320,10 +462,12 @@ export async function devCommand(options: DevOptions): Promise<void> {
   let modelLine = agentDirPath;
   let missingKeys: string[] = [];
   let agentModel = "";
+  let agentName = "";
   let channelMiddleware: ((req: import("node:http").IncomingMessage, res: import("node:http").ServerResponse) => Promise<boolean>) | null = null;
   try {
     const agent = await loadAgent(agentDirPath);
     agentModel = agent.manifest.config.model;
+    agentName = agent.manifest.config.name ?? "";
     modelLine = `${agentDirPath} ${grey("\xB7")} ${grey(agent.manifest.config.model)}`;
     missingKeys = checkProviderKeys(agent.manifest.config.model);
     channelMiddleware = createChannelMiddleware(agent.manifest.channels);
@@ -338,6 +482,12 @@ export async function devCommand(options: DevOptions): Promise<void> {
   // and the Runtime Contract routes the deployed agent will answer.
   const wantsWidget = !options.input && options.noWeb !== true;
 
+  // A project with a ui/ directory serves *its* frontend at "/"; everything
+  // else falls back to the built-in widget page.
+  const devUi = wantsWidget
+    ? await startDevUi(dirname(agentDirPath), agentName || "arcie agent")
+    : null;
+
   const contractHandler = contractRequestHandler({
     agentDir: agentDirPath,
     hotReload: true,
@@ -348,6 +498,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
     // Local sessions gateway — serves the agent loop in BYOK mode and as
     // failover when cencori.com is unreachable (mounted at /v1/sessions).
     if (await handleSessionsRequest(req, res)) return;
+    // The project's own frontend, compiled from ui/ and rebuilt on save.
+    if (devUi?.serve(req, res)) return;
     // Built-in chat widget: host page at "/" + the prebuilt bundle.
     if (wantsWidget && serveWidget(req, res)) return;
     // Runtime Contract: /invoke, /_health, /_manifest, /_agents,
@@ -392,8 +544,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
   }
   const localUrl = `http://localhost:${boundPort}`;
   if (wantsWidget) {
-    console.log(`  ${dimmed(`chat   ${localUrl}`)}`);
-    if (!WIDGET_DIR) {
+    console.log(`  ${dimmed(`${devUi ? "ui     " : "chat   "}${localUrl}`)}`);
+    if (!devUi && !WIDGET_DIR) {
       console.log(`  ${grey("⚠")} widget bundle missing — run \`npm run build\` in the arcie package`);
     }
   }
@@ -402,6 +554,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
   console.log(`  ${dimmed("set CENCORI_API_KEY to use Cencori models")}`);
   console.log();
   console.log(`  ${dimmed("hot reload  edits to agent/*.ts land on the next request")}`);
+  if (devUi) {
+    console.log(`  ${dimmed("            edits to ui/* rebuild and refresh the browser")}`);
+  }
   console.log();
   console.log(`  ${dimmed("Ctrl+C to stop")}`);
   console.log();
@@ -411,6 +566,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
   const watcher = startAgentWatcher(agentDirPath);
   const shutdown = () => {
     watcher?.close();
+    void devUi?.close();
     server.close();
     process.exit(0);
   };

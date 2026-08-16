@@ -20,12 +20,43 @@ my-agent/
 │   ├── schedules/         # recurring jobs
 │   ├── sessions/          # memory + session config
 │   └── policies/          # guardrails, budgets, security
+├── ui/                    # the frontend — optional, prewired
+│   ├── app.tsx            # your UI (default: <AgentChat />)
+│   └── theme.ts           # design tokens
 ├── arcie.json             # project + runtime manifest
 ├── package.json
 └── tsconfig.json
 ```
 
-The chat UI ships **with arcie** as a built-in `<agent-chat>` web component — `arcie dev` serves it, so there's no per-project web app to scaffold. Embed it anywhere with a plain script tag:
+The frontend ships **with arcie** — no Next.js, no bundler config, no second
+framework. `arcie init` scaffolds a working `ui/`, `arcie dev` serves it next to
+the agent on one port, and `arcie build` compiles it to static assets alongside
+the runtime:
+
+```tsx
+// ui/app.tsx — yours to change
+import { AgentChat } from "arcie/ui";
+
+export default function App() {
+  return <AgentChat />;
+}
+```
+
+```
+arcie dev             one port: your ui/, /invoke, and the local gateway
+                      edits to ui/* rebuild and refresh the browser
+
+arcie build
+  → .arcie/server.mjs      the headless runtime
+  → .arcie/static/         index.html, app.js, app.css
+```
+
+Compose the `arcie/ui` kit, drop in your own components, or rebuild the surface
+entirely on the `useChat` hook — it stays one build either way. Delete `ui/` and
+the default chat page serves instead.
+
+The same components also build to a standalone `<agent-chat>` web component, so
+you can embed an agent in a page you already own with a plain script tag:
 
 ```html
 <script src="https://unpkg.com/arcie/dist/web/agent-chat.js"></script>

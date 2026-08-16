@@ -12,6 +12,9 @@ my-agent/
 │   ├── schedules/         # defineSchedule — recurring jobs
 │   ├── sessions/          # durable execution configuration
 │   └── policies/          # security, budgets, guardrails
+├── ui/                    # the frontend — optional
+│   ├── app.tsx            # root component (default: <AgentChat />)
+│   └── theme.ts           # design tokens
 ├── package.json
 └── tsconfig.json
 ```

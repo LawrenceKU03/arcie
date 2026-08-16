@@ -7,3 +7,7 @@ web/.gen
 .next
 next-env.d.ts
 package-lock.json
+
+# Internal strategy docs — not for the public repo
+UI_STANDARD.md
+VISION.md
