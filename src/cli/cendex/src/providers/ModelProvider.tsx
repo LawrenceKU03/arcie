@@ -6,6 +6,7 @@ import {
 	useEffect,
 } from "react";
 import { fetchSupportedModels, type Model } from "../server/Models";
+import type { MessageType } from "../components/Message";
 
 export type ModelContextValue = {
 	models: Model[];
@@ -14,6 +15,8 @@ export type ModelContextValue = {
 	refresh: () => Promise<void>;
 	activeModel: Model | null;
 	setActiveModel: (model: Model) => void;
+	sessionMessages: MessageType[];
+	setSessionMessages: (sessionMessages: MessageType[]) => void;
 };
 
 const ModelContext = createContext<ModelContextValue | null>(null);
@@ -27,6 +30,7 @@ export const ModelProvider = ({ children }: { children: React.ReactNode }) => {
 	);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
+	const [sessionMessages, setSessionMessages] = useState<MessageType[]>([]);
 
 	const refresh = useCallback(async () => {
 		setLoading(true);
@@ -47,7 +51,16 @@ export const ModelProvider = ({ children }: { children: React.ReactNode }) => {
 
 	return (
 		<ModelContext.Provider
-			value={{ models, loading, error, refresh, activeModel, setActiveModel }}
+			value={{
+				models,
+				loading,
+				error,
+				refresh,
+				activeModel,
+				setActiveModel,
+				sessionMessages,
+				setSessionMessages,
+			}}
 		>
 			{children}
 		</ModelContext.Provider>

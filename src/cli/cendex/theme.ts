@@ -8,21 +8,21 @@ export const theme = {
 		notification: "#2B7FFF",
 		error: "#E60045",
 		success: "#4ADE80",
-		background: "#2c2c22",
+		background: "#262626",
 		duration: 3000,
 	},
 	message: {
 		error: {
-			border: "",
-			background: "",
+			border: "#E60045",
+			background: "#1F2937",
 		},
 		bot: {
 			border: "",
 			background: "",
 		},
 		user: {
-			border: "",
-			background: "",
+			border: "#4ADE80",
+			background: "#1F2937",
 		},
 	},
 };
