@@ -2,7 +2,7 @@ import type { DialogContextValue } from "../../providers/DialogProvider";
 import type { ToastContextValue } from "../../providers/ToastProvider";
 import type { Command } from "./types";
 import ScrollablePicker from "../ScrollablePicker";
-import { fetchSupportedModels, type Model } from "../../server/Models";
+import { type Model } from "../../server/Models";
 
 type CommandContext = {
 	toast?: ToastContextValue;
@@ -10,28 +10,6 @@ type CommandContext = {
 	clearInputBar?: () => void;
 	models: Model;
 };
-
-const MODELS: Command[] = [
-	{
-		value: "claude-sonnet-5",
-		title: "Claude Sonnet 5",
-		description: "Balanced default — fast, strong at coding",
-		action: () => {},
-	},
-	{
-		value: "claude-opus-4-8",
-		title: "Claude Opus 4.8",
-		description: "Highest capability, slower and pricier",
-		action: () => {},
-	},
-	{
-		value: "openai",
-		title: "Chatgpt",
-		description: "Cheapest, lowest latency",
-		action: () => {},
-	},
-	// Add Cencori's other routed models here (OpenAI, local/open-source, etc.)
-];
 
 const Commands: Command[] = [
 	// Session

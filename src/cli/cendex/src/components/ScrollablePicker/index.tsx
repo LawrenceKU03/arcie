@@ -4,7 +4,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useDialog } from "../../providers/DialogProvider";
 import { useToast } from "../../providers/ToastProvider";
 import type { Model } from "../../server/Models.ts";
-import { useModels } from "../../providers/ModelProvider.tsx";
+import {
+	useModels,
+	type ModelContextValue,
+} from "../../providers/ModelProvider.tsx";
 
 interface ScrollablePickerProps {
 	models: Model[];
@@ -20,13 +23,9 @@ const ScrollablePicker = ({
 	const [scrollBoxIndex, setScrollBoxIndex] = useState<number>(0);
 	const toast = useToast();
 	const dialog = useDialog();
-	const { loading, setActiveModel } = useModels();
+
 	const [filteredModels, setFilteredModels] = useState<Model[]>(models ?? []);
-
-	useEffect(() => {
-		setFilteredModels(models ?? []);
-	}, [models]);
-
+	const { loading, setActiveModel } = useModels() as ModelContextValue;
 	const MAX_VISIBLE_ITEMS = Math.min(filteredModels.length, 5) || 1;
 
 	const maxValueWidth =
@@ -46,6 +45,10 @@ const ScrollablePicker = ({
 	useEffect(() => {
 		textareaInputRef.current?.focus();
 	}, []);
+
+	useEffect(() => {
+		setFilteredModels(models);
+	}, [models]);
 
 	useBindings(
 		() => ({

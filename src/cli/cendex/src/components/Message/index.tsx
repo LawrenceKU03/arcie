@@ -1,17 +1,14 @@
 import { theme } from "../../../theme";
-import { useModels } from "../../providers/ModelProvider";
 import { EmptyBorder } from "../InputBar/border";
 
 export type MessageType = {
 	msg: string;
-	type?: string;
+	type?: "user" | "error" | "bot" | null;
 	model?: string;
 	id: number;
 };
 
-const index = ({ msg, type, model }: Message) => {
-	const { activeModel } = useModels();
-
+const index = ({ msg, type, model }: MessageType) => {
 	return (
 		<box
 			borderColor={
@@ -37,11 +34,11 @@ const index = ({ msg, type, model }: Message) => {
 							: theme.backgroundColor
 				}
 			>
-				<text marginBottom={!type && 0.5}>{msg}</text>
-				{!type && (
+				<text marginBottom={type === "bot" && 1}>{msg}</text>
+				{type === "bot" && (
 					<box flexDirection="row" alignItems="center" gap={1}>
 						<text fg="#56D6C2">◉</text>
-						{activeModel && <text>{model ?? activeModel?.name}</text>}
+						{model && <text>{model}</text>}
 					</box>
 				)}
 			</box>

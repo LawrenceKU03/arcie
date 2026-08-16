@@ -24,16 +24,6 @@ const cencori = new Cencori({
 	apiKey: apiKey as string,
 });
 
-const response = await cencori.ai.chat({
-	model: "gpt-4o",
-	messages: [
-		{ role: "system", content: "You are a helpful assistant." },
-		{ role: "user", content: "What is the capital of France?" },
-	],
-	temperature: 0.2,
-	maxTokens: 300,
-});
-
 export const fetchSupportedModels = async (): Promise<Model[]> => {
 	if (!apiKey) {
 		throw new Error(
@@ -42,7 +32,7 @@ export const fetchSupportedModels = async (): Promise<Model[]> => {
 	}
 
 	try {
-		const response = await axios.get<ModelsResponse>(`${baseURL}`, {
+		const response = await axios.get<ModelsResponse>(`${baseURL}/models`, {
 			headers: {
 				Authorization: `Bearer ${apiKey}`,
 			},
@@ -55,14 +45,16 @@ export const fetchSupportedModels = async (): Promise<Model[]> => {
 	}
 };
 
-type sessionMessages = {
-	role: string;
+export type ChatRole = "user" | "assistant" | "system" | "tool";
+
+export type ChatMessage = {
+	role: ChatRole;
 	content: string;
 };
 
 export const queryModel = async (data: {
 	model_id: string;
-	session_messages: sessionMessages[];
+	session_messages: ChatMessage[];
 	temp: number;
 	maxTokens: number;
 }) => {
@@ -72,4 +64,5 @@ export const queryModel = async (data: {
 		temperature: data.temp,
 		maxTokens: data.maxTokens,
 	});
+	return response;
 };
