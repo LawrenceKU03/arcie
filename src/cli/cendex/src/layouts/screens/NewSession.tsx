@@ -7,57 +7,47 @@ import {
 	useModels,
 	type ModelContextValue,
 } from "../../providers/ModelProvider";
-import type { ScrollBoxRenderable } from "@opentui/core";
 
+import Header from "../../components/Header";
 const THINKING_WORDS = [
-	"Thinking",
-	"Pondering",
-	"Brainstorming",
-	"Synthesizing",
-	"Analyzing",
-	"Calculating",
-	"Deliberating",
-	"Contemplating",
-	"Reasoning",
-	"Processing",
-	"Evaluating",
-	"Mulling over",
-	"Cogitating",
-	"Reflecting",
-	"Speculating",
-	"Formulating",
-	"Assembling",
-	"Weighing",
-	"Deconstructing",
-	"Consulting the cosmos",
-	"Parsing data",
-	"Connecting dots",
-	"Scheming",
+	"Marinating",
+	"Percolating",
+	"Noodling",
+	"Vibing",
 	"Ruminating",
-	"Translating",
-	"Computing",
-	"Brewing thoughts",
-	"Gathering insights",
-	"Structuring",
-	"Optimizing",
+	"Spelunking",
+	"Untangling",
+	"Wrangling",
+	"Divining",
+	"Conjuring",
+	"Puzzling",
+	"Simmering",
+	"Rummaging",
+	"Excavating",
+	"Bikeshedding",
+	"Overthinking",
+	"Channeling",
+	"Summoning",
+	"Fermenting",
+	"Coalescing",
+	"Vibrating",
+	"Percolating",
+	"Brewing",
+	"Loitering",
+	"Deliberating",
+	"Cogitating",
+	"Scheming",
 ] as const;
 
 const getRandomThinkingWord = (): string => {
 	const index = Math.floor(Math.random() * THINKING_WORDS.length);
-	return THINKING_WORDS[index];
+	return THINKING_WORDS[index] as string;
 };
 
-const Home = () => {
+const NewSession = () => {
 	const location = useLocation();
 	const { setSessionMessages, sessionMessages, respLoading } =
 		useModels() as ModelContextValue;
-	const scrollBoxRef = useRef<ScrollBoxRenderable | null>(null);
-
-	useEffect(() => {
-		if (scrollBoxRef.current) {
-			scrollBoxRef.current.scrollTo((sessionMessages.length + 1) * 1000);
-		}
-	}, [sessionMessages]);
 
 	useEffect(() => {
 		const initialQuery = location.state?.query;
@@ -68,7 +58,7 @@ const Home = () => {
 			{
 				msg: initialQuery,
 				type: "user",
-				id: crypto.randomUUID(),
+				id: sessionMessages.length + 1,
 			},
 		]);
 	}, [location.state?.query, setSessionMessages]);
@@ -84,10 +74,6 @@ const Home = () => {
 				id: crypto.randomUUID(),
 			},
 		]);
-
-		if (scrollBoxRef.current) {
-			scrollBoxRef.current.scrollTo((sessionMessages.length + 1) * 1000);
-		}
 	};
 
 	return (
@@ -97,14 +83,12 @@ const Home = () => {
 			width="100%"
 			backgroundColor={theme.backgroundColor}
 		>
-			<scrollbox
-				ref={scrollBoxRef}
-				flexGrow={1}
-				stickyScroll
-				width="100%"
-				stickStart="bottom"
-			>
+			<scrollbox flexGrow={1} stickyScroll width="100%" stickyStart="bottom">
 				<box flexDirection="column" width="100%">
+					<box paddingY={1}>
+						<Header />
+					</box>
+
 					{sessionMessages?.map((msg: MessageType) => (
 						<Message
 							key={msg.id}
@@ -121,8 +105,8 @@ const Home = () => {
 							paddingY={1}
 							gap={1}
 						>
-							<spinner name="dots" color="#fff" />
-							<text>{getRandomThinkingWord()}</text>
+							<spinner name="dots" color="#737373" />
+							<text fg="#737373">{getRandomThinkingWord()}</text>
 						</box>
 					)}
 				</box>
@@ -136,4 +120,4 @@ const Home = () => {
 	);
 };
 
-export default Home;
+export default NewSession;

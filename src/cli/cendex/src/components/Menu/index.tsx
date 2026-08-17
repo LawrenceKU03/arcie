@@ -6,6 +6,7 @@ import { useDialog } from "../../providers/DialogProvider";
 import { useToast } from "../../providers/ToastProvider";
 import { useModels } from "../../providers/ModelProvider";
 import type { Model } from "../../server/Models";
+import { useNavigate } from "react-router";
 
 const MAX_VALUE_WIDTH = Math.max(...Commands.map((cmd) => cmd.value.length));
 const MAX_DESCRIPTION_WIDTH =
@@ -27,10 +28,12 @@ const Menu = ({
 	const MAX_VISIBLE_ITEMS = Math.min(filteredCommands.length, 14);
 	const toast = useToast();
 	const dialog = useDialog();
+	const navig = useNavigate();
 
 	const [fetchedModels, setFetchedModels] = useState<Model[]>([]);
 
-	const { models, loading } = useModels();
+	const { models, loading, setSessionMessages } =
+		useModels() as ModelContextValue;
 
 	useEffect(() => {
 		setScrollBoxIndex((prev: number) =>
@@ -72,6 +75,10 @@ const Menu = ({
 									textareaInputRef.current?.setText("");
 								},
 								models: fetchedModels,
+								navig: navig,
+								clearContext: () => {
+									setSessionMessages([]);
+								},
 							});
 						}
 					},
@@ -102,7 +109,7 @@ const Menu = ({
 				{ key: "return", cmd: "execute_command" },
 			],
 		}),
-		[scrollBoxIndex, filteredCommands, dialog?.currentDialog],
+		[scrollBoxIndex, filteredCommands, dialog?.currentDialog, fetchedModels],
 	);
 
 	return (

@@ -58,7 +58,7 @@ export const queryModel = async (data: {
 	temp: number;
 	maxTokens: number;
 }) => {
-	const response = await cencori.ai.chat({
+	const response = cencori.ai.chatStream({
 		model: data.model_id,
 		messages: data.session_messages,
 		temperature: data.temp,

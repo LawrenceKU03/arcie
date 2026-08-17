@@ -1,7 +1,8 @@
 import { theme } from "../../../theme";
 import { useModels } from "../../providers/ModelProvider";
+import { formatNumber } from "../utils";
 
-const index = ({ model, mode }: { model: string; mode: string }) => {
+const index = ({ mode }: { model: string; mode: string }) => {
 	const { activeModel } = useModels();
 
 	return (
@@ -28,7 +29,9 @@ const index = ({ model, mode }: { model: string; mode: string }) => {
 				</box>
 				<box flexDirection="row">
 					{activeModel && (
-						<text>Context Window: {activeModel?.context_window}</text>
+						<text>
+							Context Window: {formatNumber(activeModel?.context_window)}
+						</text>
 					)}
 				</box>
 			</box>

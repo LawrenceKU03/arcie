@@ -66,24 +66,59 @@ export const ModelProvider = ({ children }: { children: React.ReactNode }) => {
 	}, []);
 
 	const getModelResp = useCallback(async () => {
-		if (sessionMessages[sessionMessages.length - 1]?.type === "user") {
-			setRespLoading(true);
-			const chats = mapMessagesToSession(sessionMessages);
-			const resp = await queryModel({
+		if (sessionMessages[sessionMessages.length - 1]?.type !== "user") return;
+
+		setRespLoading(true);
+		const chats = mapMessagesToSession(sessionMessages); // snapshot BEFORE placeholder
+		const botMessageId = sessionMessages.length + 1;
+
+		// 1. push an empty placeholder so the UI has something to render into
+		setSessionMessages((prev) => [
+			...prev,
+			{ model: activeModel?.name, type: "bot", msg: "", id: botMessageId },
+		]);
+
+		try {
+			const stream = await queryModel({
 				model_id: activeModel?.id as string,
 				temp: 0.2,
-				maxTokens: 300,
+				maxTokens: 10_000,
 				session_messages: chats,
 			});
-			setSessionMessages([
-				...sessionMessages,
-				{
-					model: activeModel?.name,
-					type: "bot",
-					msg: resp?.content as string,
-					id: sessionMessages.length + 1,
-				},
-			]);
+
+			let accumulated = "";
+
+			for await (const chunk of stream) {
+				accumulated += chunk.delta ?? "";
+				setSessionMessages((prev) =>
+					prev.map((m) =>
+						m.id === botMessageId ? { ...m, msg: accumulated } : m,
+					),
+				);
+			}
+
+			if (accumulated === "") {
+				setSessionMessages((prev) =>
+					prev.map((m) =>
+						m.id === botMessageId
+							? {
+								...m,
+								type: "error",
+								msg: "Model unavailable please use an open soure model",
+							}
+							: m,
+					),
+				);
+			}
+		} catch (err) {
+			setSessionMessages((prev) =>
+				prev.map((m) =>
+					m.id === botMessageId
+						? { ...m, type: "error", msg: "Stream failed" }
+						: m,
+				),
+			);
+		} finally {
 			setRespLoading(false);
 		}
 	}, [sessionMessages, activeModel, mapMessagesToSession]);

@@ -125,26 +125,27 @@ const ScrollablePicker = ({
 			/>
 
 			<scrollbox width="100%" height={MAX_VISIBLE_ITEMS} ref={scrollBoxRef}>
-				{filteredModels.map((model, indx) => {
-					const isSelected = indx === scrollBoxIndex;
-					return (
-						<box
-							key={model.id}
-							flexDirection="row"
-							alignItems="center"
-							backgroundColor={isSelected ? "gray" : "transparent"}
-						>
-							<text
-								fg="#fff"
-								marginRight={2}
-								width={maxValueWidth}
-								marginY="auto"
+				{!loading &&
+					filteredModels.map((model, indx) => {
+						const isSelected = indx === scrollBoxIndex;
+						return (
+							<box
+								key={model.id}
+								flexDirection="row"
+								alignItems="center"
+								backgroundColor={isSelected ? "gray" : "transparent"}
 							>
-								{model.name || model.id}
-							</text>
-						</box>
-					);
-				})}
+								<text
+									fg="#fff"
+									marginRight={2}
+									width={maxValueWidth}
+									marginY="auto"
+								>
+									{model.name || model.id}
+								</text>
+							</box>
+						);
+					})}
 			</scrollbox>
 
 			{loading && (

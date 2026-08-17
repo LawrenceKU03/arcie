@@ -1,5 +1,6 @@
 import { theme } from "../../../theme";
 import { EmptyBorder } from "../InputBar/border";
+import { MarkdownRenderable, SyntaxStyle, RGBA } from "@opentui/core";
 
 export type MessageType = {
 	msg: string;
@@ -8,7 +9,17 @@ export type MessageType = {
 	id: number;
 };
 
-const index = ({ msg, type, model }: MessageType) => {
+const syntaxStyle = SyntaxStyle.fromStyles({
+	default: { fg: RGBA.fromHex("#E6EDF3") },
+	"markup.heading.1": { fg: RGBA.fromHex("#58A6FF"), bold: true },
+	"markup.heading.2": { fg: RGBA.fromHex("#58A6FF"), bold: true },
+	"markup.list": { fg: RGBA.fromHex("#FF7B72") },
+	"markup.raw": { fg: RGBA.fromHex("#A5D6FF") },
+	"markup.bold": { bold: true },
+	"markup.italic": { italic: true },
+});
+
+const index = ({ msg, type }: MessageType) => {
 	return (
 		<box
 			borderColor={
@@ -34,12 +45,15 @@ const index = ({ msg, type, model }: MessageType) => {
 							: theme.backgroundColor
 				}
 			>
-				<text marginBottom={type === "bot" && 1}>{msg}</text>
-				{type === "bot" && (
-					<box flexDirection="row" alignItems="center" gap={1}>
-						<text fg="#56D6C2">◉</text>
-						{model && <text>{model}</text>}
-					</box>
+				{type === "bot" ? (
+					<markdown
+						content={msg}
+						syntaxStyle={syntaxStyle}
+						conceal
+						width="100%"
+					/>
+				) : (
+					<text>{msg}</text>
 				)}
 			</box>
 		</box>
