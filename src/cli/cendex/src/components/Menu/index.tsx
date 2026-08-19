@@ -8,6 +8,11 @@ import { useModels } from "../../providers/ModelProvider";
 import type { Model } from "../../server/Models";
 import { useNavigate } from "react-router";
 
+import { ModelContextValue } from "../../providers/ModelProvider";
+import type { MessageType } from "../Message";
+import { runLocalMemoryAgentWithRepoContext } from "../../tools/harness-plugin-core";
+import { writeToFile } from "../../tools/fileHandler";
+
 const MAX_VALUE_WIDTH = Math.max(...Commands.map((cmd) => cmd.value.length));
 const MAX_DESCRIPTION_WIDTH =
 	Math.max(...Commands.map((cmd) => cmd.description.length)) + 4;
@@ -32,8 +37,14 @@ const Menu = ({
 
 	const [fetchedModels, setFetchedModels] = useState<Model[]>([]);
 
-	const { models, loading, setSessionMessages } =
-		useModels() as ModelContextValue;
+	const {
+		models,
+		loading,
+		setRespLoading,
+		setSessionMessages,
+		sessionMessages,
+		activeModel,
+	} = useModels() as ModelContextValue;
 
 	useEffect(() => {
 		setScrollBoxIndex((prev: number) =>
@@ -71,6 +82,7 @@ const Menu = ({
 							selectedCommand[0]?.action({
 								toast: toast,
 								dialog: dialog,
+								activeModel: activeModel,
 								clearInputBar: () => {
 									textareaInputRef.current?.setText("");
 								},
@@ -78,6 +90,50 @@ const Menu = ({
 								navig: navig,
 								clearContext: () => {
 									setSessionMessages([]);
+								},
+								setThinking: (state: boolean) => {
+									setRespLoading(state);
+								},
+								sessionMessages: sessionMessages,
+								mutateSessionMessages: async (
+									msg: MessageType,
+									type?: string,
+								) => {
+									setSessionMessages((prev: MessageType[]) => [...prev, msg]);
+
+									const botMessageId = sessionMessages.length;
+									setSessionMessages((prev) => [
+										...prev,
+										{
+											model: activeModel?.name,
+											type: "bot",
+											msg: "",
+											id: botMessageId,
+										},
+									]);
+
+									if (type === selectedCommand[0]?.value) {
+										setRespLoading(true);
+										const taskDescription =
+											"create a detailed breakdown of the repo project in a file named basecode.md";
+										const stream = await runLocalMemoryAgentWithRepoContext(
+											taskDescription,
+											activeModel?.id as string,
+										);
+										let accumulated = "";
+										for await (const chunk of stream) {
+											accumulated += chunk?.delta ?? "";
+											setSessionMessages((prev) =>
+												prev.map((m: MessageType) =>
+													m.id === sessionMessages.length
+														? { ...m, msg: accumulated }
+														: m,
+												),
+											);
+										}
+										writeToFile("basecode.md", accumulated);
+									}
+									setRespLoading(false);
 								},
 							});
 						}

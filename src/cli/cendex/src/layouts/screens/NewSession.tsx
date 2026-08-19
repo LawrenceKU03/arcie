@@ -71,7 +71,7 @@ const NewSession = () => {
 			{
 				msg: data.query,
 				type: "user",
-				id: crypto.randomUUID(),
+				id: sessionMessages.length + 1,
 			},
 		]);
 	};
