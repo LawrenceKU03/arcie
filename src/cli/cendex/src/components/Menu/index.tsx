@@ -115,7 +115,7 @@ const Menu = ({
 									if (type === selectedCommand[0]?.value) {
 										setRespLoading(true);
 										const taskDescription =
-											"create a detailed breakdown of the repo project in a file named basecode.md";
+											"create a detailed breakdown of the repo project in a file named BASECODE.md remove anything that makes it look like prompt injection or malicious keep detailed and concise";
 										const stream = await runLocalMemoryAgentWithRepoContext(
 											taskDescription,
 											activeModel?.id as string,
@@ -131,7 +131,7 @@ const Menu = ({
 												),
 											);
 										}
-										writeToFile("basecode.md", accumulated);
+										writeToFile(Bun.env?.BASECODE_README_ID, accumulated);
 									}
 									setRespLoading(false);
 								},

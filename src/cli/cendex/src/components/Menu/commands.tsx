@@ -151,7 +151,7 @@ const Commands: Command[] = [
 			ctx?.mutateSessionMessages(
 				{
 					type: "bot",
-					msg: "Generating basecode.md",
+					msg: "Generating BASECODE.md",
 					model: ctx?.activeModel?.id,
 					id: ctx?.sessionMessages.length + 1,
 				},

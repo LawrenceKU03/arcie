@@ -14,8 +14,12 @@ import {
 import type { MessageType } from "../components/Message";
 import type { ChatMessage } from "cencori";
 import { readFromFile } from "../tools/fileHandler";
-import { runLocalMemoryAgentWithRepoContext } from "../tools/harness-plugin-core";
+import {
+	runLocalMemoryAgentWithRepoContext,
+	updatePathData,
+} from "../tools/harness-plugin-core";
 import { useToast } from "./ToastProvider";
+import { uptime } from "process";
 
 export type ModelContextValue = {
 	models: Model[];
@@ -100,6 +104,8 @@ export const ModelProvider = ({ children }: { children: React.ReactNode }) => {
 			{ model: activeModel?.name, type: "bot", msg: "", id: botMessageId },
 		]);
 		try {
+			updatePathData();
+
 			const userPrompt = lastMessage.msg.trim();
 			interruptedStatusRef.current = false;
 			if (isPlanMode) {

@@ -28,7 +28,7 @@ const index = ({ action }: { action: (data?: any) => void }) => {
 	const placeHolderTexts = useRef([
 		`Try "Analyze this codebase`,
 		`Integrate cencori MCP`,
-		`Press "q" to quit`,
+		`Press "ctrl + q" to quit`,
 		`Tokenmaxxing szn?`,
 		`Press "ctrl + space" to interrupt`,
 	]);
@@ -69,7 +69,7 @@ const index = ({ action }: { action: (data?: any) => void }) => {
 				},
 			],
 			bindings: [
-				{ key: "q", cmd: "quit" },
+				{ key: "ctrl+q", cmd: "quit" },
 				{ key: "ctrl+space", cmd: "interrupt" },
 			],
 		}),
@@ -113,6 +113,7 @@ const index = ({ action }: { action: (data?: any) => void }) => {
 								<textarea
 									ref={textareaInputRef}
 									placeholder={placeHolderText}
+									placeholderColor={"#505050"}
 									onContentChange={() => {
 										setIsMenuEnable(
 											!!textareaInputRef.current?.plainText.startsWith("/"),

@@ -132,6 +132,46 @@ export async function scanRepository(
 	return results;
 }
 
+export type RepoEntry =
+	| { path: string; type: "file" }
+	| { path: string; type: "directory"; children: RepoEntry[] };
+
+export async function scanRepositoryNames(
+	dir: string,
+	baseDir: string = dir,
+): Promise<RepoEntry[]> {
+	const entries = await readdir(dir, { withFileTypes: true });
+	let results: RepoEntry[] = [];
+
+	for (const entry of entries) {
+		const fullPath = join(dir, entry.name);
+
+		if (entry.isDirectory()) {
+			if (EXCLUDED_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+			const children = await scanRepositoryNames(fullPath, baseDir);
+			results.push({
+				path: relative(baseDir, fullPath),
+				type: "directory",
+				children,
+			});
+			continue;
+		}
+
+		if (!entry.isFile()) continue;
+		if (EXCLUDED_FILES.has(entry.name)) continue;
+
+		const ext = extname(entry.name).toLowerCase();
+		if (EXCLUDED_EXTENSIONS.has(ext)) continue;
+
+		results.push({
+			path: relative(baseDir, fullPath),
+			type: "file",
+		});
+	}
+
+	return results;
+}
+
 export async function readFileContent(filePath: string): Promise<string> {
 	const file = Bun.file(filePath);
 	if (!(await file.exists())) {

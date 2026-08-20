@@ -121,6 +121,7 @@ const ScrollablePicker = ({
 				ref={textareaInputRef}
 				placeholder={searchPlaceHolder}
 				padding={1}
+				placeholderColor={"#505050"}
 				onContentChange={() => {
 					const query =
 						(textareaInputRef.current?.plainText as string)?.toLowerCase() ??
