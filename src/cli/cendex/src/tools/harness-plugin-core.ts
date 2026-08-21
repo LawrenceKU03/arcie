@@ -211,7 +211,7 @@ export async function* runLocalMemoryAgentWithRepoContext(
 	});
 
 	for await (const chunk of finalStream) {
-		yield chunk; // This passes { delta: "..." } back to your React frontend loop
+		yield chunk;
 		if (updateThinkingWord) updateThinkingWord();
 	}
 }
