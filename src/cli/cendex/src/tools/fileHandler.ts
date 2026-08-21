@@ -1,7 +1,19 @@
 import { promises as fs } from "fs";
 import { readdir } from "fs/promises";
 import { join, relative, extname } from "path";
+// fileHandler.ts
+const SECRET_FILE_PATTERNS = [
+	/^\.env(\..*)?$/, // .env, .env.local, .env.production
+	/\.pem$/,
+	/\.key$/,
+	/^id_rsa/,
+	/\.p12$/,
+	/\.pfx$/,
+	/credentials\.json$/i,
+];
 
+export const isSecretFile = (name: string): boolean =>
+	SECRET_FILE_PATTERNS.some((p) => p.test(name));
 const EXCLUDED_DIRS = new Set([
 	"node_modules",
 	".git",
@@ -99,7 +111,12 @@ export async function scanRepository(
 		const fullPath = join(dir, entry.name);
 
 		if (entry.isDirectory()) {
-			if (EXCLUDED_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+			if (
+				EXCLUDED_DIRS.has(entry.name) ||
+				entry.name.startsWith(".") ||
+				isSecretFile(entry.name)
+			)
+				continue;
 			const subFiles = await scanRepository(fullPath, baseDir);
 			results.push(...subFiles);
 			continue;
@@ -147,7 +164,12 @@ export async function scanRepositoryNames(
 		const fullPath = join(dir, entry.name);
 
 		if (entry.isDirectory()) {
-			if (EXCLUDED_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+			if (
+				EXCLUDED_DIRS.has(entry.name) ||
+				entry.name.startsWith(".") ||
+				isSecretFile(entry.name)
+			)
+				continue;
 			const children = await scanRepositoryNames(fullPath, baseDir);
 			results.push({
 				path: relative(baseDir, fullPath),
@@ -245,7 +267,12 @@ export const searchRepository = async (
 		const relPath = relative(baseDir, fullPath);
 
 		if (entry.isDirectory()) {
-			if (EXCLUDED_DIRS.has(entry.name) || entry.name.startsWith(".")) continue;
+			if (
+				EXCLUDED_DIRS.has(entry.name) ||
+				entry.name.startsWith(".") ||
+				isSecretFile(entry.name)
+			)
+				continue;
 
 			if (matches(entry.name)) {
 				results.push({ path: relPath, type: "directory" });

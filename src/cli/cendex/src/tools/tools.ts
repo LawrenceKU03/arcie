@@ -1,4 +1,4 @@
-type ToolName = "peak"; // add more as you register them, e.g. "peak" | "grep" | "diff"
+type ToolName = "peek"; // add more as you register them, e.g. "peak" | "grep" | "diff"
 
 export type ToolCallCheck = {
 	tool: ToolName | null;
