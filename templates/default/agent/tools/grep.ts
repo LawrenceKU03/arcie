@@ -68,13 +68,14 @@ export default defineTool({
       return { pattern, error: `Invalid regex pattern: "${pattern}"`, matches: [], count: 0 };
     }
 
-    const matches = walkAndGrep(searchDir, regex, maxResults, projectRoot);
+    const max = maxResults ?? 20;
+    const matches = walkAndGrep(searchDir, regex, max, projectRoot);
 
     return {
       pattern,
       path: path ?? ".",
       count: matches.length,
-      truncated: matches.length >= maxResults,
+      truncated: matches.length >= max,
       matches,
     };
   },

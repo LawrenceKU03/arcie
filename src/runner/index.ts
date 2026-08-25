@@ -136,6 +136,13 @@ export interface RunOptions {
    */
   hotReload?: boolean;
   /**
+   * When true, a slot file (tool, skill, channel, ...) that fails to import
+   * fails the run with a descriptive error instead of running with the file
+   * silently missing. Production paths (contract server, build) set this;
+   * dev leaves it off so mid-edit files only warn.
+   */
+  strict?: boolean;
+  /**
    * Resume a session that paused for tool approval. Provide the paused
    * calls (from the tool.started events) with the user's verdict:
    * approved calls execute locally, denied calls return a refusal to the
@@ -328,7 +335,7 @@ export async function runAgent(
   input: string,
   options: RunOptions = {},
 ): Promise<RunResult> {
-  const agent = await loadAgent(agentDir);
+  const agent = await loadAgent(agentDir, { strict: options.strict });
   const endpoint = options.endpoint || process.env.CENCORI_API_URL || DEFAULT_ENDPOINT;
   const apiKey = options.apiKey || process.env.CENCORI_API_KEY || "";
   const events: StreamEvent[] = [];
@@ -655,7 +662,7 @@ export async function* streamAgent(
   input: string,
   options: RunOptions = {},
 ): AsyncGenerator<StreamEvent, void, unknown> {
-  const loadOpts = { hotReload: options.hotReload };
+  const loadOpts = { hotReload: options.hotReload, strict: options.strict };
   const agent =
     options.agentId !== undefined && options.agentId !== "agent"
       ? await loadAgentById(agentDir, options.agentId, loadOpts)

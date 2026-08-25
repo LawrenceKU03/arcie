@@ -1,5 +1,6 @@
 node_modules
 dist
+web/.gen
 .env
 .env.local
 *.tsbuildinfo

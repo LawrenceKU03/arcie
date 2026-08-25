@@ -8,7 +8,6 @@ import {
   readAgentModel,
   writeAgentModel,
 } from "../../agent-config";
-import { scaffoldWebChat } from "../../scaffold-web-chat";
 import type { PromptCommand } from "../prompt-commands";
 import { parsePromptCommand, formatPromptCommandHelp } from "../prompt-commands";
 import { attachKeyStream } from "../attach-keys";
@@ -202,44 +201,23 @@ function handleProvider(agentDir: string): CommandOutcome {
 function handleChannels(argument: string, agentDir: string): CommandOutcome {
   if (argument.length === 0) {
     const channels = listChannels(agentDir);
-    if (channels.length === 0) {
-      return {
-        message: ["No channels scaffolded.", "Add one with: /channels add web"].join("\n"),
-      };
-    }
-    const lines = ["Channels:"];
+    const lines = channels.length === 0 ? ["No channels scaffolded."] : ["Channels:"];
     for (const channel of channels) lines.push(`  ${channel.name} — ${channel.path}`);
-    lines.push("Add another with: /channels add <kind>");
+    lines.push("");
+    lines.push("Web chat is built in — `arcie dev` serves the <agent-chat> widget.");
+    lines.push("Scaffold a messaging channel from the CLI: arcie channels add slack | discord");
     return { message: lines.join("\n") };
   }
 
-  const parts = argument.split(/\s+/);
-  const subcommand = parts[0];
-  const kind = parts[1];
-  if (subcommand !== "add") {
-    return { message: `Unknown subcommand '${subcommand}' — try: /channels add web` };
-  }
-  if (kind !== "web") {
-    return {
-      message: `Unsupported channel kind '${kind ?? ""}' — only 'web' is supported`,
-    };
-  }
-  try {
-    const result = scaffoldWebChat(agentDir);
-    if (result.alreadyExisted) {
-      return { message: `web already exists at ${result.targetPath}` };
-    }
-    return {
-      message: [
-        `Scaffolded ${result.targetPath}`,
-        "Next: cd into it, npm install, npm run dev",
-      ].join("\n"),
-    };
-  } catch (err) {
-    return {
-      message: `Channel scaffold failed: ${err instanceof Error ? err.message : String(err)}`,
-    };
-  }
+  return {
+    message: [
+      "Scaffold channels from the CLI, not here:",
+      "  arcie channels add slack",
+      "  arcie channels add discord",
+      "",
+      "Web chat needs no scaffolding — `arcie dev` serves the built-in widget.",
+    ].join("\n"),
+  };
 }
 
 function handleLogLevel(

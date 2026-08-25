@@ -29,6 +29,14 @@ export interface LoadAgentOptions {
    * a fresh module in memory. Cheap in dev; do not enable in production.
    */
   hotReload?: boolean;
+  /**
+   * When true, a slot file (tool, skill, channel, ...) that fails to import
+   * fails the whole load with a descriptive error instead of being skipped
+   * with a warning. `arcie build` and the deployed contract server use this
+   * so a broken agent can never ship or serve silently — dev keeps warnings
+   * so mid-edit files stay frictionless.
+   */
+  strict?: boolean;
 }
 
 export const PRIMARY_AGENT_ID = "agent";
@@ -63,7 +71,11 @@ export async function loadAgent(
         config = { ...config, ...mod.default };
       }
     } catch (err) {
-      console.warn(`[arcie] Failed to load agent.ts: ${(err as Error).message}. Using defaults.`);
+      const message = err instanceof Error ? err.message : String(err);
+      if (options.strict) {
+        throw new Error(`Failed to load agent.ts: ${message}`);
+      }
+      console.warn(`[arcie] Failed to load agent.ts: ${message}. Using defaults.`);
     }
   }
 
@@ -288,15 +300,30 @@ async function loadDirectory<T>(
     const name = basename(entry, extname(entry));
     const filePath = resolve(dirPath, entry);
 
-    if (statSync(filePath).isFile()) {
-      try {
-        const mod = await import(moduleSpecifier(filePath, options.hotReload));
-        if (mod.default) {
-          result[name] = mod.default;
-        }
-      } catch {
-        // skip unloadable files
+    if (!statSync(filePath).isFile()) continue;
+
+    let mod: { default?: T };
+    try {
+      mod = await import(moduleSpecifier(filePath, options.hotReload));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (options.strict) {
+        throw new Error(`Failed to load ${dirName}/${entry}: ${message}`);
       }
+      console.warn(`[arcie] Failed to load ${dirName}/${entry}: ${message} — skipping`);
+      continue;
+    }
+
+    if (mod.default) {
+      result[name] = mod.default;
+    } else {
+      // A module without a default export is either a shared helper (fine)
+      // or a forgotten `export default defineTool(...)` (silently losing a
+      // tool). Never drop it quietly — surface it either way.
+      if (options.strict) {
+        throw new Error(`${dirName}/${entry} has no default export — add one or move it to a helpers file`);
+      }
+      console.warn(`[arcie] ${dirName}/${entry} has no default export — skipping`);
     }
   }
 
@@ -312,8 +339,12 @@ async function loadSessionConfig(
     try {
       const mod = await import(moduleSpecifier(tsPath, options.hotReload));
       return mod.default ?? null;
-    } catch {
-      return null;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (options.strict) {
+        throw new Error(`Failed to load sessions/config.ts: ${message}`);
+      }
+      console.warn(`[arcie] Failed to load sessions/config.ts: ${message} — ignoring`);
     }
   }
   return null;
@@ -328,8 +359,12 @@ async function loadPolicyConfig(
     try {
       const mod = await import(moduleSpecifier(tsPath, options.hotReload));
       return mod.default ?? null;
-    } catch {
-      return null;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (options.strict) {
+        throw new Error(`Failed to load policies/index.ts: ${message}`);
+      }
+      console.warn(`[arcie] Failed to load policies/index.ts: ${message} — ignoring`);
     }
   }
   return null;

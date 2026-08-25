@@ -6,65 +6,70 @@ export interface ScaffoldSlackResult {
   readonly alreadyExisted: boolean;
 }
 
-const SLACK_CHANNEL_TEMPLATE = `import { defineChannel, POST } from "arcie";
+const SLACK_CHANNEL_TEMPLATE = `import { defineChannel, POST, runAgent, verifySlackRequest, replyToSlack } from "arcie";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /*
-  Slack Events API channel.
+  Slack Events API channel — signed, replying, production-ready.
 
   1. Create a Slack app at https://api.slack.com/apps
-  2. Enable Event Subscriptions and point the Request URL to:
+  2. Enable Event Subscriptions and subscribe to app_mention.
+     Point the Request URL to:
      https://your-domain.com/api/channels/slack/events
-  3. Add the \`SLACK_SIGNING_SECRET\` and \`SLACK_BOT_TOKEN\` env vars.
+  3. Add the env vars (see .env.local):
+     SLACK_SIGNING_SECRET   — every request is HMAC-verified (401 otherwise)
+     SLACK_BOT_TOKEN        — used to post the agent's replies
+  4. For local dev, expose the server with a tunnel (ngrok).
 
-  For local dev, use a tunnel (ngrok) to expose your local server.
+  The Events API acknowledgment and the reply are independent: this handler
+  verifies the signature, acknowledges with 200, then posts the agent's
+  reply asynchronously with the bot token.
 */
+
+const agentDir = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
 export default defineChannel({
   name: "slack",
   type: "slack",
   handler: POST(async (request) => {
-    const { body, headers } = request;
-    const payload = body as Record<string, unknown>;
+    const verification = verifySlackRequest(request);
+    if (!verification.ok) {
+      return { status: 401, body: { error: verification.error } };
+    }
+    if (verification.skipped) {
+      console.warn("[slack] " + verification.skipped);
+    }
+
+    const payload = request.body as Record<string, unknown>;
 
     // Slack URL verification challenge
     if (payload.type === "url_verification") {
-      return {
-        status: 200,
-        body: { challenge: payload.challenge },
-      };
+      return { status: 200, body: { challenge: payload.challenge } };
     }
 
     // Event callback
     if (payload.type === "event_callback") {
       const event = payload.event as Record<string, unknown> | undefined;
-      if (event?.type === "app_mention" || event?.type === "message") {
-        const text = event.text as string | undefined;
-        const channel = event.channel as string | undefined;
+      const text = event?.text as string | undefined;
+      const channel = event?.channel as string | undefined;
+      const threadTs = event?.thread_ts as string | undefined;
+      const isBot = event?.bot_id !== undefined;
+
+      if (event?.type === "app_mention" || (event?.type === "message" && !isBot)) {
         if (text && channel) {
-          // Process through agent (import your agent and send the message)
-          // const response = await agent.generate(text);
-          // await fetch("https://slack.com/api/chat.postMessage", {
-          //   method: "POST",
-          //   headers: {
-          //     Authorization: \`Bearer \${process.env.SLACK_BOT_TOKEN}\`,
-          //     "Content-Type": "application/json",
-          //   },
-          //   body: JSON.stringify({ channel, text: response }),
-          // });
+          try {
+            const { output } = await runAgent(agentDir, text, {
+              resourceId: \`slack:\${channel}\`,
+              sessionId: threadTs ?? channel,
+            });
+            const reply = await replyToSlack(channel, output, threadTs ? { threadTs } : undefined);
+            if (!reply.ok) console.error("[slack] reply failed:", reply.error);
+          } catch (err) {
+            console.error("[slack] agent run failed:", err instanceof Error ? err.message : err);
+          }
         }
       }
-      return { status: 200, body: { ok: true } };
-    }
-
-    // Slash commands
-    if (payload.command) {
-      const text = payload.text as string | undefined;
-      const channelId = payload.channel_id as string | undefined;
-      if (text) {
-        // const response = await agent.generate(text);
-        // return { status: 200, body: { response_type: "in_channel", text: response } };
-      }
-      return { status: 200, body: { text: "Processing..." } };
     }
 
     return { status: 200, body: { ok: true } };

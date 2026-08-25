@@ -17,3 +17,7 @@ export function GET(handler: ChannelConfig["handler"]): ChannelConfig["handler"]
 
 export { createChannelMiddleware } from "./server";
 export type { ChannelServerHandle } from "./server";
+export { verifySlackRequest, verifyDiscordRequest } from "./verify";
+export type { VerificationResult } from "./verify";
+export { replyToSlack, replyToDiscord } from "./outbound";
+export type { SlackReplyOptions, ReplyResult } from "./outbound";

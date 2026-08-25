@@ -11,9 +11,10 @@ export default defineTool({
   }),
   execute: async ({ query, maxResults, includeContent }) => {
     const apiKey = process.env.TAVILY_API_KEY;
+    const max = maxResults ?? 5;
 
     if (!apiKey) {
-      return fallbackSearch(query, maxResults);
+      return fallbackSearch(query, max);
     }
 
     try {
@@ -24,7 +25,7 @@ export default defineTool({
         body: JSON.stringify({
           api_key: apiKey,
           query,
-          max_results: Math.min(maxResults, 10),
+          max_results: Math.min(max, 10),
           include_answer: true,
           include_raw_content: false,
           include_domains: [],
@@ -53,7 +54,7 @@ export default defineTool({
         }>;
       };
 
-      const results = (data.results ?? []).slice(0, maxResults).map((r) => ({
+      const results = (data.results ?? []).slice(0, max).map((r) => ({
         title: r.title,
         snippet: includeContent ? r.content : r.content.slice(0, 300),
         url: r.url,

@@ -8,21 +8,17 @@
     "entry": "./agent/agent.ts"
   },
 
-  "apps": {
-    "web": {
-      "dir": "./web",
-      "framework": "nextjs",
-      "installCommand": "npm install",
-      "buildCommand": "npm run build",
-      "startCommand": "npm start",
-      "env": ["CENCORI_API_KEY", "CENCORI_PROJECT_ID"]
-    }
-  },
-
-  "deploy": {
-    "default": "web",
-    "stage": {
-      "./agent": "./web/agent"
+  "runtime": {
+    "buildCommand": "arcie build",
+    "artifact": "./.arcie/server.mjs",
+    "startCommand": "node ./.arcie/server.mjs",
+    "env": ["CENCORI_API_KEY"],
+    "contract": {
+      "health": "GET /_health",
+      "invoke": "POST /invoke",
+      "channel": "POST /channels/:name",
+      "schedule": "POST /schedules/:name",
+      "manifest": "GET /_manifest"
     }
   }
 }

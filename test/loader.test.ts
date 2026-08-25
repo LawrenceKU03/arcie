@@ -1,10 +1,11 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAgent } from "../src/loader";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE = resolve(__dirname, "fixtures/agent");
+const BROKEN_FIXTURE = resolve(__dirname, "fixtures/agent-broken");
 
 describe("loadAgent", () => {
   it("loads config, instructions, and tool modules into a manifest", async () => {
@@ -26,5 +27,25 @@ describe("loadAgent", () => {
 
   it("throws when the agent directory does not exist", async () => {
     await expect(loadAgent("definitely/not/here")).rejects.toThrow(/not found/);
+  });
+
+  it("warns and skips a broken slot file by default instead of silently dropping it", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { manifest } = await loadAgent(BROKEN_FIXTURE);
+      expect(manifest.tools.good).toBeDefined();
+      expect(manifest.tools.broken).toBeUndefined();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("tools/broken.ts"),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("fails the load in strict mode when a slot file cannot be imported", async () => {
+    await expect(loadAgent(BROKEN_FIXTURE, { strict: true })).rejects.toThrow(
+      /tools\/broken\.ts.*this-module-does-not-exist/s,
+    );
   });
 });

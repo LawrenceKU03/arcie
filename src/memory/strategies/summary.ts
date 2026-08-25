@@ -33,7 +33,7 @@ export class SummaryStrategy implements MemoryStrategy {
   private async defaultSummarize(text: string): Promise<string> {
     const truncated = truncate(text);
     const apiKey = process.env.CENCORI_API_KEY;
-    const endpoint = process.env.CENCORI_API_URL || "https://cencori.com/v1";
+    const endpoint = process.env.CENCORI_API_URL || "https://cencori.com/api/v1";
 
     if (!apiKey) {
       return `Previous conversation: ${truncated.slice(0, 500)}`;

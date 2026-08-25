@@ -10,6 +10,7 @@ export default defineTool({
   }),
   execute: async ({ urls, maxCharsPerUrl }) => {
     const urlList = typeof urls === "string" ? [urls] : urls;
+    const maxChars = maxCharsPerUrl ?? 8000;
     const results = [];
 
     for (const url of urlList) {
@@ -50,7 +51,7 @@ export default defineTool({
             .trim();
         }
 
-        const truncated = content.length > maxCharsPerUrl ? content.slice(0, maxCharsPerUrl) + "..." : content;
+        const truncated = content.length > maxChars ? content.slice(0, maxChars) + "..." : content;
 
         results.push({
           url,
@@ -58,7 +59,7 @@ export default defineTool({
           contentType,
           title: title || undefined,
           content: truncated,
-          truncated: content.length > maxCharsPerUrl,
+          truncated: content.length > maxChars,
           totalLength: content.length,
         });
       } catch (err) {
